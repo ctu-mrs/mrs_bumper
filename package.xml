@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>mrs_bumper</name>
+  <version>1.0.0</version>
+  <description>Program for publishing bumper messages for reactive collision avoidance</description>
+
+  <maintainer email="vrbamato@fel.cvut.cz">Matouš Vrba</maintainer>
+
+  <license>free of charge</license>
+
+  <author email="vrbamato@fel.cvut.cz">Matouš Vrba</author>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <depend>roscpp</depend>
+  <depend>dynamic_reconfigure</depend>
+  <depend>mrs_lib</depend>
+
+  <exec_depend>message_runtime</exec_depend>
+
+  <export>
+  </export>
+
+</package>
