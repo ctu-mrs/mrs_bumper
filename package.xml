@@ -15,10 +15,15 @@
   <depend>roscpp</depend>
   <depend>dynamic_reconfigure</depend>
   <depend>mrs_lib</depend>
+  <depend>nodelet</depend>
 
   <exec_depend>message_runtime</exec_depend>
 
   <export>
+    <!-- Other tools can request additional information be placed here -->
+    <nodelet plugin="${prefix}/bumper_nodelet.xml" />
+
+    generate_messages_cpp
   </export>
 
 </package>

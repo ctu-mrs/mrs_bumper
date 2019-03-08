@@ -34,7 +34,10 @@ namespace mrs_bumper
       mrs_lib::ParamLoader pl(nh, m_node_name);
       // LOAD STATIC PARAMETERS
       ROS_INFO("Loading static parameters:");
-      pl.load_param("unknown_pixel_value", m_unknown_pixel_value, 0);
+      pl.load_param("unknown_pixel_value", m_unknown_pixel_value);
+      pl.load_param("max_obstacle_depth", m_max_obstacle_depth);
+      pl.load_param("unknown_obstacle_value", m_unknown_obstacle_value);
+      pl.load_param("frame_id", m_frame_id);
       m_roi.x_offset = pl.load_param2<int>("roi/x_offset", 0);
       m_roi.y_offset = pl.load_param2<int>("roi/y_offset", 0);
       m_roi.width = pl.load_param2<int>("roi/width", 0);
@@ -57,6 +60,7 @@ namespace mrs_bumper
       mrs_lib::SubscribeMgr smgr(nh, m_node_name);
       const bool subs_time_consistent = false;
       m_depthmap_sh = smgr.create_handler_threadsafe<sensor_msgs::ImageConstPtr, subs_time_consistent>("depthmap", 1, ros::TransportHints().tcpNoDelay(), ros::Duration(5.0));
+      m_depth_cinfo_sh = smgr.create_handler_threadsafe<sensor_msgs::CameraInfoConstPtr, subs_time_consistent>("depth_camera_info", 1, ros::TransportHints().tcpNoDelay(), ros::Duration(5.0));
       // Initialize publishers
       m_obstacles_pub = nh.advertise<mrs_bumper::ObstacleSectors>("obstacle_sectors", 1);
       //}
@@ -90,6 +94,19 @@ namespace mrs_bumper
     /* main_loop() method //{ */
     void main_loop([[maybe_unused]] const ros::TimerEvent& evt)
     {
+      /* Update number of horizontal sectors etd //{ */
+      if (m_depth_cinfo_sh->new_data())
+      {
+        const double fx = m_depth_cinfo_sh->get_data()->K[0];
+        const double cx = m_depth_cinfo_sh->get_data()->K[2];
+        const double horizontal_fov = std::atan2(cx, fx)*2.0;
+        m_n_horizontal_sectors = std::ceil(2.0*M_PI/horizontal_fov);
+        /* std::cout << "horizontal FOV: " << horizontal_fov << std::endl; */
+        /* std::cout << "horizontal sectors: " << m_n_horizontal_sectors << std::endl; */
+        m_n_total_sectors = m_n_horizontal_sectors + 2;
+      }
+      //}
+
       if (m_depthmap_sh->new_data())
       {
         cv_bridge::CvImage source_msg = *cv_bridge::toCvCopy(m_depthmap_sh->get_data(), std::string("16UC1"));
@@ -136,8 +153,29 @@ namespace mrs_bumper
         }
         //}
 
+        //TODO: filter out ground
+        
         //TODO: detection of obstacles
+        
+        cv::Mat usable_pixels;
+        if (m_mask_im.empty())
+          usable_pixels = known_pixels;
+        else
+          cv::bitwise_and(known_pixels, m_mask_im, usable_pixels);
+        double min_val = m_unknown_pixel_value;
+        cv::minMaxLoc(detect_im, &min_val, nullptr, nullptr, nullptr, usable_pixels);
+        double obstacle_depth = min_val/1000;
+        std::cout << "min. value: " << min_val << std::endl;
+        if (min_val == m_unknown_pixel_value || obstacle_depth > m_max_obstacle_depth)
+          obstacle_depth = m_unknown_obstacle_value;
 
+        mrs_bumper::ObstacleSectors obst_msg;
+        obst_msg.header.frame_id = m_frame_id;
+        obst_msg.header.stamp = source_msg.header.stamp;
+        obst_msg.n_horizontal_sectors = m_n_horizontal_sectors;
+        obst_msg.sectors.resize(m_n_total_sectors, m_unknown_obstacle_value);
+        obst_msg.sectors.at(0) = obstacle_depth;
+        m_obstacles_pub.publish(obst_msg);
       }
     }
     //}
@@ -150,12 +188,16 @@ namespace mrs_bumper
 
     /* Parameters, loaded from ROS //{ */
     int m_unknown_pixel_value;
+    double m_unknown_obstacle_value;
+    double m_max_obstacle_depth;
+    std::string m_frame_id;
     sensor_msgs::RegionOfInterest m_roi;
     //}
 
     /* ROS related variables (subscribers, timers etc.) //{ */
     std::unique_ptr<drmgr_t> m_drmgr_ptr;
     mrs_lib::SubscribeHandlerPtr<sensor_msgs::ImageConstPtr> m_depthmap_sh;
+    mrs_lib::SubscribeHandlerPtr<sensor_msgs::CameraInfoConstPtr> m_depth_cinfo_sh;
     ros::Publisher m_obstacles_pub;
     ros::Timer m_main_loop_timer;
     std::string m_node_name;
@@ -170,6 +212,9 @@ namespace mrs_bumper
     /* Image mask //{ */
     cv::Mat m_mask_im;
     //}
+
+    uint32_t m_n_horizontal_sectors;
+    uint32_t m_n_total_sectors;
 
   }; // class Bumper
 }; // namespace mrs_bumper
