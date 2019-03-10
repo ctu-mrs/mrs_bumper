@@ -1,0 +1,40 @@
+name: simulation
+root: ~/
+
+startup_window: mrs_bumper
+pre_window: export UAV_NAME=uav1; export SIMULATION=true
+# startup_pane: 1
+
+windows:
+  - gazebo:
+      layout: even-vertical
+      panes:
+        - roslaunch mrs_bumper simulation.launch
+  - spawn:
+      layout: even-vertical
+      panes:
+        - waitForSimulation; spawn 1 --run --delete --enable-rangefinder --enable-ground-truth --enable-realsense-front --enable-realistic-realsense --enable-scanse
+  - odometry:
+      layout: even-vertical
+      panes:
+        - waitForOdometry; roslaunch mrs_uav_manager simulation_f550_gps.launch
+  - takeoff:
+      layout: even-vertical
+      panes:
+        #{ takeoff uav1
+        - '
+          waitForControl;
+          rosservice call /$UAV_NAME/mavros/cmd/arming 1;
+          rosservice call /$UAV_NAME/mavros/set_mode 0 offboard;
+          rosservice call /$UAV_NAME/control_manager/motors 1;
+          rosservice call /$UAV_NAME/mav_manager/takeoff;
+          sleep 5;
+          rosservice call /$UAV_NAME/control_manager/switch_tracker mrs_trackers/LineTracker;
+          rosservice call /$UAV_NAME/control_manager/goto "goal: [-5.0, 0.0, 2.0, 0.0]"
+          '
+        #}
+  - mrs_bumper:
+      layout: even-vertical
+      panes:
+        - waitForControl; roslaunch mrs_bumper bumper.launch
+        - waitForControl; rostopic echo /uav1/mrs_bumper/obstacle_sectors
