@@ -43,6 +43,7 @@ namespace mrs_bumper
       m_roi.y_offset = pl.load_param2<int>("roi/y_offset", 0);
       m_roi.width = pl.load_param2<int>("roi/width", 0);
       m_roi.height = pl.load_param2<int>("roi/height", 0);
+      pl.load_param<bool>("roi/centering", m_roi_centering, false);
       std::string path_to_mask = pl.load_param2<std::string>("path_to_mask", std::string());
 
       // LOAD DYNAMIC PARAMETERS
@@ -67,6 +68,7 @@ namespace mrs_bumper
       m_lidar_1d_up_sh = smgr.create_handler_threadsafe<sensor_msgs::RangeConstPtr, subs_time_consistent>("lidar_1d_up", 1, ros::TransportHints().tcpNoDelay(), ros::Duration(5.0));
       // Initialize publishers
       m_obstacles_pub = nh.advertise<mrs_bumper::ObstacleSectors>("obstacle_sectors", 1);
+      m_processed_depthmap_pub = nh.advertise<sensor_msgs::Image>("processed_depthmap", 1);
       //}
 
       /* Initialize other varibles //{ */
@@ -104,6 +106,18 @@ namespace mrs_bumper
       if (!m_sectors_initialized && m_depth_cinfo_sh->new_data())
       {
         const auto cinfo = m_depth_cinfo_sh->get_data();
+        if (m_roi_centering)
+        {
+          if (m_roi.height == 0)
+            m_roi.height = cinfo->height;
+          if (m_roi.width == 0)
+            m_roi.width = cinfo->width;
+
+          m_roi.y_offset = (cinfo->height-m_roi.height)/2;
+          m_roi.x_offset = (cinfo->width-m_roi.width)/2;
+        }
+
+
         if (m_roi.y_offset + m_roi.height > unsigned(cinfo->height) || m_roi.height == 0)
           m_roi.height = std::clamp(int(cinfo->height - m_roi.y_offset), 0, int(cinfo->height));
         if (m_roi.x_offset + m_roi.width > unsigned(cinfo->width) || m_roi.width == 0)
@@ -204,6 +218,16 @@ namespace mrs_bumper
           }
           if (obst_msg.header.stamp > source_msg.header.stamp)
             obst_msg.header.stamp = source_msg.header.stamp;
+
+          if (m_processed_depthmap_pub.getNumSubscribers() > 0)
+          {
+            /* Create and publish the debug image //{ */
+            cv_bridge::CvImage processed_depthmap_cvb = source_msg;
+            processed_depthmap_cvb.image = detect_im;
+            sensor_msgs::ImageConstPtr out_msg = processed_depthmap_cvb.toImageMsg();
+            m_processed_depthmap_pub.publish(out_msg);
+            //}
+          }
         }
         //}
 
@@ -282,6 +306,7 @@ namespace mrs_bumper
     int m_unknown_pixel_value;
     std::string m_frame_id;
     sensor_msgs::RegionOfInterest m_roi;
+    bool m_roi_centering;
     //}
 
     /* ROS related variables (subscribers, timers etc.) //{ */
@@ -292,6 +317,7 @@ namespace mrs_bumper
     mrs_lib::SubscribeHandlerPtr<sensor_msgs::RangeConstPtr> m_lidar_1d_down_sh;
     mrs_lib::SubscribeHandlerPtr<sensor_msgs::RangeConstPtr> m_lidar_1d_up_sh;
     ros::Publisher m_obstacles_pub;
+    ros::Publisher m_processed_depthmap_pub;
     ros::Timer m_main_loop_timer;
     std::string m_node_name;
     //}

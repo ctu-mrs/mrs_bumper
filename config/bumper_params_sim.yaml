@@ -1,9 +1,6 @@
+roi:
+  centering: True
+  height: 480
 # this value is used in the input depth map to indicate that
 # depth of the specific pixel is unknown
 unknown_pixel_value: 0
-# this value is used in the ObstacleSectors message to indicate
-# that no information about obstacles is available in the specific
-# sector
-unknown_obstacle_value: -1.0
-# obstacles behind this depth are ignored
-max_obstacle_depth: 5.0 # meters
