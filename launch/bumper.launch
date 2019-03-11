@@ -15,6 +15,10 @@
   <arg     if="$(arg simulation)" name="depth_cinfo_topic" value="/$(arg uav_name)/realsense/camera/depth/camera_info"/>
   <arg unless="$(arg simulation)" name="lidar_2d_topic" value="/$(arg uav_name)/scanse_sweep/range"/>
   <arg     if="$(arg simulation)" name="lidar_2d_topic" value="/$(arg uav_name)/scanse_sweep/range"/>
+  <arg unless="$(arg simulation)" name="lidar_1d_down_topic" value="/$(arg uav_name)/garmin/range"/>
+  <arg     if="$(arg simulation)" name="lidar_1d_down_topic" value="/$(arg uav_name)/garmin/range"/>
+  <arg unless="$(arg simulation)" name="lidar_1d_up_topic" value="/$(arg uav_name)/garmin_up/range"/>
+  <arg     if="$(arg simulation)" name="lidar_1d_up_topic" value="/$(arg uav_name)/garmin_up/range"/>
 
   <arg name="ignore_mask" default="$(optenv IGNORE_MASK true)" />
   <arg unless="$(arg ignore_mask)" name="mask_filename" value="$(find mrs_bumper)/masks/realsense_f550_mask.bmp"/>
@@ -38,6 +42,8 @@
       <remap from="~depthmap" to="$(arg depthmap_topic)" />
       <remap from="~depth_camera_info" to="$(arg depth_cinfo_topic)" />
       <remap from="~lidar_2d" to="$(arg lidar_2d_topic)" />
+      <remap from="~lidar_1d_down" to="$(arg lidar_1d_down_topic)" />
+      <remap from="~lidar_1d_up" to="$(arg lidar_1d_up_topic)" />
 
     </node>
   

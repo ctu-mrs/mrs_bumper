@@ -3,6 +3,7 @@
 #include <cv_bridge/cv_bridge.h>
 #include <nodelet/nodelet.h>
 #include <sensor_msgs/LaserScan.h>
+#include <sensor_msgs/Range.h>
 
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -62,6 +63,8 @@ namespace mrs_bumper
       m_depthmap_sh = smgr.create_handler_threadsafe<sensor_msgs::ImageConstPtr, subs_time_consistent>("depthmap", 1, ros::TransportHints().tcpNoDelay(), ros::Duration(5.0));
       m_depth_cinfo_sh = smgr.create_handler_threadsafe<sensor_msgs::CameraInfoConstPtr, subs_time_consistent>("depth_camera_info", 1, ros::TransportHints().tcpNoDelay(), ros::Duration(5.0));
       m_lidar_2d_sh = smgr.create_handler_threadsafe<sensor_msgs::LaserScanConstPtr, subs_time_consistent>("lidar_2d", 1, ros::TransportHints().tcpNoDelay(), ros::Duration(5.0));
+      m_lidar_1d_down_sh = smgr.create_handler_threadsafe<sensor_msgs::RangeConstPtr, subs_time_consistent>("lidar_1d_down", 1, ros::TransportHints().tcpNoDelay(), ros::Duration(5.0));
+      m_lidar_1d_up_sh = smgr.create_handler_threadsafe<sensor_msgs::RangeConstPtr, subs_time_consistent>("lidar_1d_up", 1, ros::TransportHints().tcpNoDelay(), ros::Duration(5.0));
       // Initialize publishers
       m_obstacles_pub = nh.advertise<mrs_bumper::ObstacleSectors>("obstacle_sectors", 1);
       //}
@@ -113,6 +116,8 @@ namespace mrs_bumper
         const double horizontal_fov = std::atan2(w/2.0, fx)*2.0;
         const double vectical_fov = std::atan2(h/2.0, fy)*2.0;
         m_n_horizontal_sectors = std::ceil(2.0*M_PI/horizontal_fov);
+        m_bottom_sector_idx = m_n_horizontal_sectors;
+        m_top_sector_idx = m_n_horizontal_sectors+1;
         m_horizontal_sector_ranges = initialize_ranges(m_n_horizontal_sectors);
         m_n_total_sectors = m_n_horizontal_sectors + 2;
         m_vertical_fov = vectical_fov;
@@ -226,6 +231,40 @@ namespace mrs_bumper
         }
         //}
 
+        /* Check data from the down-facing lidar //{ */
+        if (m_lidar_1d_down_sh->new_data())
+        {
+          sensor_msgs::Range source_msg = *m_lidar_1d_down_sh->get_data();
+          const bool obstacle_sure = source_msg.range > source_msg.min_range && source_msg.range < source_msg.max_range;
+          auto& cur_value = obst_msg.sectors.at(m_bottom_sector_idx);
+          auto& cur_sensor = obst_msg.sector_sensors.at(m_bottom_sector_idx);
+          if (obstacle_sure && (cur_value == mrs_bumper::ObstacleSectors::OBSTACLE_UNKNOWN || source_msg.range < cur_value))
+          {
+            cur_value = source_msg.range;
+            cur_sensor = mrs_bumper::ObstacleSectors::SENSOR_LIDAR_1D;
+          }
+          if (obst_msg.header.stamp > source_msg.header.stamp)
+            obst_msg.header.stamp = source_msg.header.stamp;
+        }
+        //}
+
+        /* Check data from the up-facing lidar //{ */
+        if (m_lidar_1d_up_sh->new_data())
+        {
+          sensor_msgs::Range source_msg = *m_lidar_1d_up_sh->get_data();
+          const bool obstacle_sure = source_msg.range > source_msg.min_range && source_msg.range < source_msg.max_range;
+          auto& cur_value = obst_msg.sectors.at(m_top_sector_idx);
+          auto& cur_sensor = obst_msg.sector_sensors.at(m_top_sector_idx);
+          if (obstacle_sure && (cur_value == mrs_bumper::ObstacleSectors::OBSTACLE_UNKNOWN || source_msg.range < cur_value))
+          {
+            cur_value = source_msg.range;
+            cur_sensor = mrs_bumper::ObstacleSectors::SENSOR_LIDAR_1D;
+          }
+          if (obst_msg.header.stamp > source_msg.header.stamp)
+            obst_msg.header.stamp = source_msg.header.stamp;
+        }
+        //}
+
         /* Publish the ObstacleSectors message //{ */
         m_obstacles_pub.publish(obst_msg);
         //}
@@ -250,6 +289,8 @@ namespace mrs_bumper
     mrs_lib::SubscribeHandlerPtr<sensor_msgs::ImageConstPtr> m_depthmap_sh;
     mrs_lib::SubscribeHandlerPtr<sensor_msgs::CameraInfoConstPtr> m_depth_cinfo_sh;
     mrs_lib::SubscribeHandlerPtr<sensor_msgs::LaserScanConstPtr> m_lidar_2d_sh;
+    mrs_lib::SubscribeHandlerPtr<sensor_msgs::RangeConstPtr> m_lidar_1d_down_sh;
+    mrs_lib::SubscribeHandlerPtr<sensor_msgs::RangeConstPtr> m_lidar_1d_up_sh;
     ros::Publisher m_obstacles_pub;
     ros::Timer m_main_loop_timer;
     std::string m_node_name;
@@ -266,6 +307,8 @@ namespace mrs_bumper
     //}
 
     uint32_t m_n_horizontal_sectors;
+    uint32_t m_bottom_sector_idx;
+    uint32_t m_top_sector_idx;
     using angle_range_t = std::pair<double, double>;
     std::vector<angle_range_t> m_horizontal_sector_ranges;
     uint32_t m_n_total_sectors;
@@ -289,6 +332,7 @@ namespace mrs_bumper
     }
     //}
 
+    /* initialize_ranges() method //{ */
     std::vector<angle_range_t> initialize_ranges(uint32_t m_n_horizontal_sectors)
     {
       std::vector<angle_range_t> ret;
@@ -297,11 +341,14 @@ namespace mrs_bumper
         ret.push_back(get_horizontal_sector_angle_interval(sector_it));
       return ret;
     }
+    //}
 
+    /* angle_in_range() method //{ */
     bool angle_in_range(double angle, const angle_range_t& angle_range)
     {
       return angle > angle_range.first && angle < angle_range.second;
     }
+    //}
 
     /* find_obstacles_in_horizontal_sectors() method //{ */
     using scan_cit_t = sensor_msgs::LaserScan::_ranges_type::const_iterator;
