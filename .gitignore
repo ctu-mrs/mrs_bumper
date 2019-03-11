@@ -1,0 +1,47 @@
+# local backup files
+*.BAK
+
+# vim swap files
+*.swp
+*.swo
+
+# extra large files
+*.bag
+
+# CodeBlocks temporary files
+*.layout
+*.depend
+
+# PyCharm bullshit
+.idea
+
+# python cache
+*.pyc
+
+# other data files
+*.csv
+*.pdf
+
+# tmuxinator cache
+*.tmuxinator.yml
+
+# my typos
+*\\
+
+# Catkin bullshit
+.catkin_tools
+
+# build related files
+obj/
+objs/
+build/
+
+# testing images, videos etc.
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.avi
+*.mpg
+*.mpeg
+*.mp4
