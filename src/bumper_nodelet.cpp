@@ -338,7 +338,7 @@ namespace mrs_bumper
     using angle_range_t = std::pair<double, double>;
     std::vector<angle_range_t> m_horizontal_sector_ranges;
     uint32_t m_n_total_sectors;
-    uint32_t m_vertical_fov;
+    double m_vertical_fov;
     bool m_sectors_initialized;
 
   private:
