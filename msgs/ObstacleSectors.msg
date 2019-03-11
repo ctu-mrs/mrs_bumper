@@ -3,7 +3,7 @@ uint32    n_horizontal_sectors  # number of horizontal sectors (total number of 
 float64   sectors_vertical_fov  # vertical FOV of the horizontal sectors
 float64[] sectors               # distance to closest detected obstacle in each sector
 int8[]    sector_sensors        # the sensor, used for obstacle detection in each sector
-# The horizontal sectors are indexed clockwise, starting from the front facing
+# The horizontal sectors are indexed counterclockwise, starting from the front facing
 # sector, relative to the MAV orientation (see picture below). The last two
 # elements of the *sectors* variable are the above and below sectors, respectively.
 #
@@ -11,12 +11,12 @@ int8[]    sector_sensors        # the sensor, used for obstacle detection in eac
 #         --------
 #
 #        \         /
-#         \   0   /
-#          \     /     forward
+#         \   0   /   (forward)
+#          \     /        x 
 #                         ^
 #            O O          |
-#        3    X    1
-#            O O
+#        1    X    3   <--* z
+#            O O       y
 #                
 #          /     \
 #         /   2   \

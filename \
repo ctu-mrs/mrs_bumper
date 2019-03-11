@@ -113,7 +113,6 @@ namespace mrs_bumper
         const double horizontal_fov = std::atan2(w/2.0, fx)*2.0;
         const double vectical_fov = std::atan2(h/2.0, fy)*2.0;
         m_n_horizontal_sectors = std::ceil(2.0*M_PI/horizontal_fov);
-        m_horizontal_sector_ranges = initialize_ranges(m_n_horizontal_sectors);
         m_n_total_sectors = m_n_horizontal_sectors + 2;
         m_vertical_fov = vectical_fov;
         ROS_INFO("[Bumper]: Depth camera horizontal FOV: %.1fdeg", horizontal_fov/M_PI*180.0);
@@ -205,20 +204,20 @@ namespace mrs_bumper
         /* Check data from the horizontal 2D lidar //{ */
         if (m_lidar_2d_sh->new_data())
         {
-          sensor_msgs::LaserScan source_msg = *m_lidar_2d_sh->get_data();
+          sensor_msgs::LaserScan scan_msg = *m_lidar_2d_sh->get_data();
         
-          std::vector<double> obstacle_distances = find_obstacles_in_horizontal_sectors(source_msg);
           for (unsigned sector_it = 0; sector_it < m_n_horizontal_sectors; sector_it++)
           {
-            const double obstacle_dist = obstacle_distances.at(sector_it);
-            if (obstacle_dist == mrs_bumper::ObstacleSectors::OBSTACLE_UNKNOWN)
-              continue;
+            const auto sector_angles = get_horizontal_sector_angle_interval(sector_it);
+            const auto sector_meas_range = get_scans_between_angles(scan_msg, sector_angles);
+            const double sector_min_distance = std::min_element(sector_meas_range.first, sector_meas_range.second);
+            
             auto& cur_value = obst_msg.sectors.at(sector_it);
             auto& cur_sensor = obst_msg.sector_sensors.at(sector_it);
-            if (cur_value == mrs_bumper::ObstacleSectors::OBSTACLE_UNKNOWN || obstacle_dist < cur_value)
+            if (obstacle_sure && (cur_value == mrs_bumper::ObstacleSectors::OBSTACLE_UNKNOWN || obstacle_depth < cur_value))
             {
-              cur_value = obstacle_dist;
-              cur_sensor = mrs_bumper::ObstacleSectors::SENSOR_LIDAR_2D;
+              cur_value = obstacle_depth;
+              cur_sensor = mrs_bumper::ObstacleSectors::SENSOR_DEPTH;
             }
             if (obst_msg.header.stamp > source_msg.header.stamp)
               obst_msg.header.stamp = source_msg.header.stamp;
@@ -266,8 +265,6 @@ namespace mrs_bumper
     //}
 
     uint32_t m_n_horizontal_sectors;
-    using angle_range_t = std::pair<double, double>;
-    std::vector<angle_range_t> m_horizontal_sector_ranges;
     uint32_t m_n_total_sectors;
     uint32_t m_vertical_fov;
     bool m_sectors_initialized;
@@ -279,51 +276,13 @@ namespace mrs_bumper
     // --------------------------------------------------------------
 
     /* get_horizontal_sector_angle_interval() method //{ */
-    angle_range_t get_horizontal_sector_angle_interval(unsigned sector_it)
+    std::pair<double, double> get_horizontal_sector_angle_interval(unsigned sector_it)
     {
       assert(sector_it < m_n_horizontal_sectors);
       const double angle_step = 2.0*M_PI/m_n_horizontal_sectors;
-      const double angle_start = sector_it*angle_step - angle_step/2.0;
-      const double angle_end = angle_start+angle_step + angle_step/2.0;
+      const double angle_start = sector_it*angle_step;
+      const double angle_end = angle_start+angle_step;
       return {angle_start, angle_end};
-    }
-    //}
-
-    std::vector<angle_range_t> initialize_ranges(uint32_t m_n_horizontal_sectors)
-    {
-      std::vector<angle_range_t> ret;
-      ret.reserve(m_n_horizontal_sectors);
-      for (unsigned sector_it = 0; sector_it < m_n_horizontal_sectors; sector_it++)
-        ret.push_back(get_horizontal_sector_angle_interval(sector_it));
-      return ret;
-    }
-
-    bool angle_in_range(double angle, const angle_range_t& angle_range)
-    {
-      return angle > angle_range.first && angle < angle_range.second;
-    }
-
-    /* find_obstacles_in_horizontal_sectors() method //{ */
-    using scan_cit_t = sensor_msgs::LaserScan::_ranges_type::const_iterator;
-    std::vector<double> find_obstacles_in_horizontal_sectors(const sensor_msgs::LaserScan& scan_msg)
-    {
-      std::vector<double> ret;
-      ret.reserve(m_n_horizontal_sectors);
-      for (const auto& cur_angle_range : m_horizontal_sector_ranges)
-      {
-        double min_range = std::numeric_limits<double>::max();
-        for (unsigned ray_it = 0; ray_it < scan_msg.ranges.size(); ray_it++)
-        {
-          const double ray_range = scan_msg.ranges.at(ray_it);
-          const double ray_angle = scan_msg.angle_min + ray_it*scan_msg.angle_increment;
-          if (ray_range < min_range && angle_in_range(ray_angle, cur_angle_range))
-            min_range = ray_range;
-        }
-        if (min_range < scan_msg.range_min || min_range > scan_msg.range_max)
-          min_range = mrs_bumper::ObstacleSectors::OBSTACLE_UNKNOWN;
-        ret.push_back(min_range);
-      }
-      return ret;
     }
     //}
 
