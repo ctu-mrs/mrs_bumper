@@ -39,11 +39,12 @@ namespace mrs_bumper
       double update_rate = pl.load_param2<double>("update_rate", 10.0);
       pl.load_param("unknown_pixel_value", m_unknown_pixel_value);
       pl.load_param("frame_id", m_frame_id);
+      pl.load_param("sector_filter_size", m_sector_filter_size, 1);
       m_roi.x_offset = pl.load_param2<int>("roi/x_offset", 0);
       m_roi.y_offset = pl.load_param2<int>("roi/y_offset", 0);
       m_roi.width = pl.load_param2<int>("roi/width", 0);
       m_roi.height = pl.load_param2<int>("roi/height", 0);
-      pl.load_param<bool>("roi/centering", m_roi_centering, false);
+      pl.load_param("roi/centering", m_roi_centering, false);
       std::string path_to_mask = pl.load_param2<std::string>("path_to_mask", std::string());
 
       // LOAD DYNAMIC PARAMETERS
@@ -135,6 +136,9 @@ namespace mrs_bumper
         m_horizontal_sector_ranges = initialize_ranges(m_n_horizontal_sectors);
         m_n_total_sectors = m_n_horizontal_sectors + 2;
         m_vertical_fov = vectical_fov;
+        const boost::circular_buffer<double> init_bfr(m_sector_filter_size, mrs_bumper::ObstacleSectors::OBSTACLE_UNKNOWN);
+        m_sector_filters.resize(m_n_total_sectors, init_bfr);
+
         ROS_INFO("[Bumper]: Depth camera horizontal FOV: %.1fdeg", horizontal_fov/M_PI*180.0);
         ROS_INFO("[Bumper]: Depth camera vertical FOV: %.1fdeg", vectical_fov/M_PI*180.0);
         ROS_INFO("[Bumper]: Number of horizontal sectors: %d", m_n_horizontal_sectors);
@@ -289,6 +293,8 @@ namespace mrs_bumper
         }
         //}
 
+        obst_msg.sectors = filter_sectors(obst_msg.sectors);
+
         /* Publish the ObstacleSectors message //{ */
         m_obstacles_pub.publish(obst_msg);
         //}
@@ -305,6 +311,7 @@ namespace mrs_bumper
     /* Parameters, loaded from ROS //{ */
     int m_unknown_pixel_value;
     std::string m_frame_id;
+    int m_sector_filter_size;
     sensor_msgs::RegionOfInterest m_roi;
     bool m_roi_centering;
     //}
@@ -337,6 +344,7 @@ namespace mrs_bumper
     uint32_t m_top_sector_idx;
     using angle_range_t = std::pair<double, double>;
     std::vector<angle_range_t> m_horizontal_sector_ranges;
+    std::vector<boost::circular_buffer<double>> m_sector_filters;
     uint32_t m_n_total_sectors;
     double m_vertical_fov;
     bool m_sectors_initialized;
@@ -395,6 +403,72 @@ namespace mrs_bumper
         if (min_range < scan_msg.range_min || min_range > scan_msg.range_max)
           min_range = mrs_bumper::ObstacleSectors::OBSTACLE_UNKNOWN;
         ret.push_back(min_range);
+      }
+      return ret;
+    }
+    //}
+
+    /* find_min_larger() method //{ */
+    // finds the smallest unused value in *buf*, which is greater of equal to *ge_to*
+    // updating the *used* variable to indicate which element was used
+    template <typename T>
+    static T find_unused_min_ge(const boost::circular_buffer<T>& buf, const T ge_to, std::vector<int>& used)
+    {
+      T ret = std::numeric_limits<T>::max();
+      int used_it = -1;
+      for (unsigned it = 0; it < buf.size(); it++)
+      {
+        int& el_used = used.at(it);
+        if (el_used)
+          continue;
+        const T& val = buf.at(it);
+        if (val < ret && val >= ge_to)
+        {
+          ret = val;
+          used_it = it;
+        }
+      }
+      if (used_it > 0)
+        used.at(used_it) = 1;
+      return ret;
+    }
+    //}
+
+    /* get_median() method //{ */
+    template <typename T>
+    static T get_median(const boost::circular_buffer<T>& filter)
+    {
+      const auto len = filter.size();
+      const bool even_len = filter.size()%2 == 0;
+      T prev_min = std::numeric_limits<T>::lowest();
+      std::vector<int> used(len, 0);
+      for (unsigned it = 0; it < len/2; it++)
+        prev_min = find_unused_min_ge(filter, prev_min, used);
+      T median = prev_min;
+      if (even_len)
+      {
+        T median2 = find_unused_min_ge(filter, prev_min, used);
+        median = (median + median2)/T(2);
+      }
+      if (std::isinf(median))
+        ROS_WARN("[Bumper]: median is inf...");
+      return median;
+    }
+    //}
+
+    /* filter_sectors() method //{ */
+    template <typename T>
+    std::vector<T> filter_sectors(const std::vector<T>& sectors)
+    {
+      assert(sectors.size() == m_sector_filters.size());
+      std::vector<T> ret;
+      ret.reserve(sectors.size());
+      for (unsigned it = 0; it < sectors.size(); it++)
+      {
+        const T sec = sectors.at(it);
+        boost::circular_buffer<T>& fil = m_sector_filters.at(it);
+        fil.push_back(sec);
+        ret.push_back(get_median(fil));
       }
       return ret;
     }
