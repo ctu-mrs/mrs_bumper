@@ -32,7 +32,7 @@ generate_messages(DEPENDENCIES
 )
 
 generate_dynamic_reconfigure_options(
-  config/BumperConfig.cfg
+  config/Bumper.cfg
   )
 
 catkin_package(

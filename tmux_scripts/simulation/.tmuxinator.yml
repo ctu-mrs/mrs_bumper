@@ -9,7 +9,7 @@ windows:
   - gazebo:
       layout: even-vertical
       panes:
-        - roslaunch mrs_bumper simulation.launch
+        - roslaunch mrs_bumper simulation.launch gui:=false
   - spawn:
       layout: even-vertical
       panes:
@@ -30,7 +30,8 @@ windows:
           rosservice call /$UAV_NAME/mav_manager/takeoff;
           sleep 5;
           rosservice call /$UAV_NAME/control_manager/switch_tracker mrs_trackers/LineTracker;
-          rosservice call /$UAV_NAME/control_manager/goto "goal: [-5.0, 0.0, 2.0, 0.0]"
+          rosservice call /$UAV_NAME/control_manager/goto "goal: [-5.0, 0.0, 2.0, 0.0]";
+          history -s rosservice call /$UAV_NAME/control_manager/goto "\"goal: [-5.0, 0.0, 2.0, 0.0]\"";
           '
         #}
   - mrs_bumper:
@@ -42,4 +43,4 @@ windows:
       layout: even-vertical
       panes:
         - waitForControl; rosrun tf2_ros static_transform_publisher 0 0 0 0 0 0 fcu_uav1 fcu_uav1_horizontal
-        - waitForControl; rviz;
+        # - waitForControl; rviz
