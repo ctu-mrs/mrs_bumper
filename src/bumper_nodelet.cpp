@@ -36,10 +36,10 @@ namespace mrs_bumper
       mrs_lib::ParamLoader pl(nh, m_node_name);
       // LOAD STATIC PARAMETERS
       ROS_INFO("Loading static parameters:");
-      double update_rate = pl.load_param2<double>("update_rate", 10.0);
+      pl.load_param("update_rate", m_update_rate, 10.0);
       pl.load_param("unknown_pixel_value", m_unknown_pixel_value);
       pl.load_param("frame_id", m_frame_id);
-      pl.load_param("sector_filter_size", m_sector_filter_size, 1);
+      pl.load_param("median_filter_size", m_median_filter_size, 1);
       m_roi.x_offset = pl.load_param2<int>("roi/x_offset", 0);
       m_roi.y_offset = pl.load_param2<int>("roi/y_offset", 0);
       m_roi.width = pl.load_param2<int>("roi/width", 0);
@@ -93,7 +93,7 @@ namespace mrs_bumper
       m_sectors_initialized = false;
       //}
 
-      m_main_loop_timer = nh.createTimer(ros::Rate(update_rate), &Bumper::main_loop, this);
+      m_main_loop_timer = nh.createTimer(ros::Rate(m_update_rate), &Bumper::main_loop, this);
 
       std::cout << "----------------------------------------------------------" << std::endl;
 
@@ -118,7 +118,6 @@ namespace mrs_bumper
           m_roi.x_offset = (cinfo->width-m_roi.width)/2;
         }
 
-
         if (m_roi.y_offset + m_roi.height > unsigned(cinfo->height) || m_roi.height == 0)
           m_roi.height = std::clamp(int(cinfo->height - m_roi.y_offset), 0, int(cinfo->height));
         if (m_roi.x_offset + m_roi.width > unsigned(cinfo->width) || m_roi.width == 0)
@@ -136,13 +135,37 @@ namespace mrs_bumper
         m_horizontal_sector_ranges = initialize_ranges(m_n_horizontal_sectors);
         m_n_total_sectors = m_n_horizontal_sectors + 2;
         m_vertical_fov = vectical_fov;
-        const boost::circular_buffer<double> init_bfr(m_sector_filter_size, mrs_bumper::ObstacleSectors::OBSTACLE_UNKNOWN);
-        m_sector_filters.resize(m_n_total_sectors, init_bfr);
+        update_filter_sizes();
 
         ROS_INFO("[Bumper]: Depth camera horizontal FOV: %.1fdeg", horizontal_fov/M_PI*180.0);
         ROS_INFO("[Bumper]: Depth camera vertical FOV: %.1fdeg", vectical_fov/M_PI*180.0);
         ROS_INFO("[Bumper]: Number of horizontal sectors: %d", m_n_horizontal_sectors);
         m_sectors_initialized = true;
+      }
+
+      // apply possible changes from dynamic reconfigure
+      if (m_median_filter_size != m_drmgr_ptr->config.median_filter_size)
+      {
+        if (m_drmgr_ptr->config.median_filter_size > 0)
+        {
+          m_median_filter_size = m_drmgr_ptr->config.median_filter_size;
+          update_filter_sizes();
+        } else
+        {
+          ROS_ERROR("[Bumper]: Size of median filter cannot be <= 0: %d! Ignoring new value.", m_drmgr_ptr->config.median_filter_size);
+        }
+      }
+
+      if (m_update_rate != m_drmgr_ptr->config.update_rate)
+      {
+        if (m_drmgr_ptr->config.update_rate > 0.0)
+        {
+          m_update_rate = m_drmgr_ptr->config.update_rate;
+          m_main_loop_timer.setPeriod(ros::Duration(1.0/m_update_rate));
+        } else
+        {
+          ROS_ERROR("[Bumper]: Update rate cannot be <= 0: %lf! Ignoring new value.", m_drmgr_ptr->config.update_rate);
+        }
       }
       //}
 
@@ -309,9 +332,10 @@ namespace mrs_bumper
     // --------------------------------------------------------------
 
     /* Parameters, loaded from ROS //{ */
+    double m_update_rate;
     int m_unknown_pixel_value;
     std::string m_frame_id;
-    int m_sector_filter_size;
+    int m_median_filter_size;
     sensor_msgs::RegionOfInterest m_roi;
     bool m_roi_centering;
     //}
@@ -354,6 +378,16 @@ namespace mrs_bumper
     // --------------------------------------------------------------
     // |                       Helper methods                       |
     // --------------------------------------------------------------
+
+    /* update_filter_sizes() method //{ */
+    void update_filter_sizes()
+    {
+      const boost::circular_buffer<double> init_bfr(m_median_filter_size, mrs_bumper::ObstacleSectors::OBSTACLE_UNKNOWN);
+      m_sector_filters.resize(m_n_total_sectors, init_bfr);
+      for (auto& fil : m_sector_filters)
+        fil.rset_capacity(m_median_filter_size);
+    }
+    //}
 
     /* get_horizontal_sector_angle_interval() method //{ */
     angle_range_t get_horizontal_sector_angle_interval(unsigned sector_it)

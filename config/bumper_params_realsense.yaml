@@ -5,4 +5,4 @@ roi:
 # depth of the specific pixel is unknown
 unknown_pixel_value: 0
 # size of the median filter, used for each sector
-sector_filter_size: 10
+median_filter_size: 10
