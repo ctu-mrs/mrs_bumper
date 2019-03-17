@@ -382,34 +382,14 @@ namespace mrs_bumper
     std::vector<int> calculate_histogram(const cv::Mat& img, const int n_bins, const cv::Mat& mask)
     {
       assert(((img.type() & CV_MAT_DEPTH_MASK) == CV_16U) || ((img.type() & CV_MAT_DEPTH_MASK) == CV_16S));
-      std::vector<int> hist(n_bins, 0);
-      const float max_val = pow(2, img.depth());
-      const float bin_width = max_val / n_bins;
-      /* cv::Mat ret; */
-      /* const int channels[] = {0}; */
-      /* const int histSize[] = {n_bins}; */
-      /* const float range[] = {0.0f, max_val}; */
-      /* cv::calcHist(&img, 1, channels, cv::Mat(), ret, 1, histSize, range); */
-      /* cv::calcHist(const Mat *images, int nimages, const int *channels, InputArray mask, OutputArray hist, int dims, const int *histSize, const float **ranges, bool uniform = true, bool accumulate = false) */
-
-      cv::Size size = img.size();
-      if (img.isContinuous() && mask.isContinuous())
-      {
-        size.width *= size.height;
-        size.height = 1;
-      }
-      for (int i = 0; i < size.height; i++)
-      {
-        const uint16_t* sptr = img.ptr<uint16_t>(i);
-        const uint8_t* mptr = mask.ptr<uint8_t>(i);
-        for (int j = 0; j < size.width; j++)
-        {
-          uint16_t cur_val = sptr[j];
-          uint16_t cur_mask = mptr[j];
-          if (cur_mask)
-            hist[cur_val/bin_width]++;
-        }
-      }
+      // Quantize the hue to 30 levels
+      // and the saturation to 32 levels
+      int histSize[] = {n_bins};
+      float range[] = {0, 65535};
+      const float* ranges[] = {range};
+      int channels[] = {0};
+      std::vector<int> hist;
+      calcHist(&img, 1, channels, mask, hist, 2, histSize, ranges);
       return hist;
     }
     //}
@@ -422,9 +402,7 @@ namespace mrs_bumper
       {
         cur_area += hist[it];
         if (cur_area > quantile_area)
-        {
           return it;
-        }
       }
       return hist.size();
     }
