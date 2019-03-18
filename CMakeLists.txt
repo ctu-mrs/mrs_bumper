@@ -16,7 +16,8 @@ find_package(catkin REQUIRED COMPONENTS
 )
 
 set(CMAKE_CXX_FLAGS "")
-set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DEIGEN_INITIALIZE_MATRICES_BY_NAN -DDISABLE_PARALLELIZATION -DDEBUG_PARAMS")
+set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DEIGEN_INITIALIZE_MATRICES_BY_NAN -DDISABLE_PARALLELIZATION -DDEBUG_PARAMS -DDEBUG")
+# set(CMAKE_CXX_FLAGS "-g -O0 -DEIGEN_INITIALIZE_MATRICES_BY_NAN -DDISABLE_PARALLELIZATION -DDEBUG_PARAMS -DDEBUG")
 set(CMAKE_CXX_FLAGS_RELEASE "-Werror -O3")
 
 add_compile_options("-std=c++17" "-Wall")
@@ -25,6 +26,7 @@ find_package(OpenCV REQUIRED)
 
 add_message_files(DIRECTORY msgs FILES
   ObstacleSectors.msg
+  Histogram.msg
 )
 
 generate_messages(DEPENDENCIES
@@ -55,6 +57,16 @@ add_dependencies(Bumper
   ${catkin_EXPORTED_TARGETS}
 )
 target_link_libraries(Bumper
+  ${catkin_LIBRARIES}
+  ${OpenCV_LIBRARIES}
+)
+
+add_executable(histogram_displayer src/histogram_displayer.cpp)
+add_dependencies(histogram_displayer
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
+)
+target_link_libraries(histogram_displayer
   ${catkin_LIBRARIES}
   ${OpenCV_LIBRARIES}
 )

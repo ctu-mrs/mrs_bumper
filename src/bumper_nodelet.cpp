@@ -14,6 +14,7 @@
 
 #include <mrs_bumper/BumperConfig.h>
 #include <mrs_bumper/ObstacleSectors.h>
+#include <mrs_bumper/Histogram.h>
 
 // shortcut type to the dynamic reconfigure manager template instance
 typedef mrs_lib::DynamicReconfigureMgr<mrs_bumper::BumperConfig> drmgr_t;
@@ -45,6 +46,8 @@ namespace mrs_bumper
       m_roi.width = pl.load_param2<int>("roi/width", 0);
       m_roi.height = pl.load_param2<int>("roi/height", 0);
       pl.load_param("roi/centering", m_roi_centering, false);
+      pl.load_param("histogram_n_bins", m_hist_n_bins, 1000);
+      pl.load_param("histogram_quantile_area", m_hist_quantile_area, 100);
       std::string path_to_mask = pl.load_param2<std::string>("path_to_mask", std::string());
 
       // LOAD DYNAMIC PARAMETERS
@@ -70,6 +73,7 @@ namespace mrs_bumper
       // Initialize publishers
       m_obstacles_pub = nh.advertise<mrs_bumper::ObstacleSectors>("obstacle_sectors", 1);
       m_processed_depthmap_pub = nh.advertise<sensor_msgs::Image>("processed_depthmap", 1);
+      m_depthmap_hist_pub = nh.advertise<mrs_bumper::Histogram>("depthmap_histogram", 1);
       //}
 
       /* Initialize other varibles //{ */
@@ -227,15 +231,24 @@ namespace mrs_bumper
         
           //TODO: more sophisticated detection of obstacles?
         
+          ros::WallTime start = ros::WallTime::now();
           cv::Mat usable_pixels;
           if (m_mask_im.empty())
             usable_pixels = known_pixels;
           else
             cv::bitwise_and(known_pixels, m_mask_im, usable_pixels);
-          double min_val = m_unknown_pixel_value;
-          cv::minMaxLoc(detect_im, &min_val, nullptr, nullptr, nullptr, usable_pixels);
-          double obstacle_depth = min_val/1000.0;
-          const bool obstacle_sure = !(min_val == m_unknown_pixel_value);
+          const auto hist = calculate_histogram(detect_im, m_hist_n_bins, usable_pixels);
+#ifdef DEBUG
+          show_hist(hist);
+#endif
+          const double bin_max = 65536.0;
+          const double bin_size = bin_max/m_hist_n_bins;
+          const int quantile = find_histogram_quantile(hist, m_hist_quantile_area);
+          ros::WallTime end = ros::WallTime::now();
+          ros::WallDuration dur = end-start;
+          const double obstacle_depth = quantile*bin_size/1000.0;
+          const bool obstacle_sure = !(quantile == m_hist_n_bins);
+
           auto& cur_value = obst_msg.sectors.at(0);
           auto& cur_sensor = obst_msg.sector_sensors.at(0);
           if (obstacle_sure && (cur_value == mrs_bumper::ObstacleSectors::OBSTACLE_UNKNOWN || obstacle_depth < cur_value))
@@ -253,6 +266,20 @@ namespace mrs_bumper
             processed_depthmap_cvb.image = detect_im;
             sensor_msgs::ImageConstPtr out_msg = processed_depthmap_cvb.toImageMsg();
             m_processed_depthmap_pub.publish(out_msg);
+            //}
+          }
+
+          if (m_depthmap_hist_pub.getNumSubscribers() > 0)
+          {
+            /* Create and publish the debug image //{ */
+            mrs_bumper::Histogram out_msg;
+            out_msg.unit = "mm";
+            out_msg.bin_size = bin_size;
+            out_msg.bin_max = bin_max;
+            out_msg.bin_min = 0;
+            out_msg.bin_mark = quantile;
+            out_msg.bins = hist;
+            m_depthmap_hist_pub.publish(out_msg);
             //}
           }
         }
@@ -338,6 +365,8 @@ namespace mrs_bumper
     int m_median_filter_size;
     sensor_msgs::RegionOfInterest m_roi;
     bool m_roi_centering;
+    int m_hist_n_bins;
+    int m_hist_quantile_area;
     //}
 
     /* ROS related variables (subscribers, timers etc.) //{ */
@@ -349,6 +378,7 @@ namespace mrs_bumper
     mrs_lib::SubscribeHandlerPtr<sensor_msgs::RangeConstPtr> m_lidar_1d_up_sh;
     ros::Publisher m_obstacles_pub;
     ros::Publisher m_processed_depthmap_pub;
+    ros::Publisher m_depthmap_hist_pub;
     ros::Timer m_main_loop_timer;
     std::string m_node_name;
     //}
@@ -378,24 +408,23 @@ namespace mrs_bumper
     // |                       Helper methods                       |
     // --------------------------------------------------------------
 
+    using hist_t = std::vector<float>;
     /* calculate_histogram() method //{ */
-    std::vector<int> calculate_histogram(const cv::Mat& img, const int n_bins, const cv::Mat& mask)
+    hist_t calculate_histogram(const cv::Mat& img, const int n_bins, const cv::Mat& mask)
     {
       assert(((img.type() & CV_MAT_DEPTH_MASK) == CV_16U) || ((img.type() & CV_MAT_DEPTH_MASK) == CV_16S));
-      // Quantize the hue to 30 levels
-      // and the saturation to 32 levels
       int histSize[] = {n_bins};
       float range[] = {0, 65535};
       const float* ranges[] = {range};
       int channels[] = {0};
-      std::vector<int> hist;
-      calcHist(&img, 1, channels, mask, hist, 2, histSize, ranges);
+      cv::MatND hist;
+      calcHist(&img, 1, channels, mask, hist, 1, histSize, ranges);
       return hist;
     }
     //}
 
-    /* find_histogram_quantil() method //{ */
-    unsigned find_histogram_quantile(const std::vector<int>& hist, const double quantile_area)
+    /* find_histogram_quantile() method //{ */
+    int find_histogram_quantile(const hist_t& hist, const double quantile_area)
     {
       double cur_area = 0;
       for (unsigned it = 0; it < hist.size(); it++)
