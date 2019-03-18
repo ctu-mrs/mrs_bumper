@@ -36,7 +36,7 @@ namespace mrs_bumper
       /* Load parameters from ROS //{*/
       mrs_lib::ParamLoader pl(nh, m_node_name);
       // LOAD STATIC PARAMETERS
-      ROS_INFO("Loading static parameters:");
+      ROS_INFO("[Bumper]: Loading static parameters:");
       pl.load_param("update_rate", m_update_rate, 10.0);
       pl.load_param("unknown_pixel_value", m_unknown_pixel_value);
       pl.load_param("frame_id", m_frame_id);
@@ -47,7 +47,8 @@ namespace mrs_bumper
       m_roi.height = pl.load_param2<int>("roi/height", 0);
       pl.load_param("roi/centering", m_roi_centering, false);
       pl.load_param("histogram_n_bins", m_hist_n_bins, 1000);
-      pl.load_param("histogram_quantile_area", m_hist_quantile_area, 100);
+      pl.load_param("histogram_quantile_area", m_hist_quantile_area, 200);
+      pl.load_param("max_depth", m_max_depth);
       std::string path_to_mask = pl.load_param2<std::string>("path_to_mask", std::string());
 
       // LOAD DYNAMIC PARAMETERS
@@ -229,24 +230,24 @@ namespace mrs_bumper
         
           //TODO: filter out ground?
         
-          //TODO: more sophisticated detection of obstacles?
+          m_hist_n_bins = m_drmgr_ptr->config.histogram_n_bins;
+          m_hist_quantile_area = m_drmgr_ptr->config.histogram_quantile_area;
+          m_max_depth = m_drmgr_ptr->config.max_depth;
         
-          ros::WallTime start = ros::WallTime::now();
           cv::Mat usable_pixels;
           if (m_mask_im.empty())
             usable_pixels = known_pixels;
           else
             cv::bitwise_and(known_pixels, m_mask_im, usable_pixels);
-          const auto hist = calculate_histogram(detect_im, m_hist_n_bins, usable_pixels);
+          const double depthmap_to_meters = 1.0/1000.0;
+          const double bin_max = m_max_depth/depthmap_to_meters;
+          const double bin_size = bin_max/m_hist_n_bins;
+          const auto hist = calculate_histogram(detect_im, m_hist_n_bins, bin_max, usable_pixels);
 #ifdef DEBUG
           show_hist(hist);
 #endif
-          const double bin_max = 65536.0;
-          const double bin_size = bin_max/m_hist_n_bins;
           const int quantile = find_histogram_quantile(hist, m_hist_quantile_area);
-          ros::WallTime end = ros::WallTime::now();
-          ros::WallDuration dur = end-start;
-          const double obstacle_depth = quantile*bin_size/1000.0;
+          const double obstacle_depth = quantile*bin_size*depthmap_to_meters;
           const bool obstacle_sure = !(quantile == m_hist_n_bins);
 
           auto& cur_value = obst_msg.sectors.at(0);
@@ -367,6 +368,7 @@ namespace mrs_bumper
     bool m_roi_centering;
     int m_hist_n_bins;
     int m_hist_quantile_area;
+    double m_max_depth;
     //}
 
     /* ROS related variables (subscribers, timers etc.) //{ */
@@ -410,11 +412,11 @@ namespace mrs_bumper
 
     using hist_t = std::vector<float>;
     /* calculate_histogram() method //{ */
-    hist_t calculate_histogram(const cv::Mat& img, const int n_bins, const cv::Mat& mask)
+    hist_t calculate_histogram(const cv::Mat& img, const int n_bins, const double bin_max, const cv::Mat& mask)
     {
       assert(((img.type() & CV_MAT_DEPTH_MASK) == CV_16U) || ((img.type() & CV_MAT_DEPTH_MASK) == CV_16S));
       int histSize[] = {n_bins};
-      float range[] = {0, 65535};
+      float range[] = {0, (float)bin_max};
       const float* ranges[] = {range};
       int channels[] = {0};
       cv::MatND hist;

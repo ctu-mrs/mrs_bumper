@@ -14,7 +14,7 @@ void mouse_callback([[maybe_unused]]int event, int x, int y, [[maybe_unused]]int
 }
 
 /* draw_hist() function //{ */
-float draw_hist(const std::vector<float>& hist, cv::Mat& hist_img)
+void draw_hist(const std::vector<float>& hist, cv::Mat& hist_img, unsigned highlight_first = 0)
 {
   double max_val = 0;
   const auto bins = hist.size();
@@ -25,12 +25,14 @@ float draw_hist(const std::vector<float>& hist, cv::Mat& hist_img)
   for (unsigned b = 0; b < bins; b++)
   {
     const auto bin_val = hist.at(b);
+    cv::Scalar color = cv::Scalar::all(255);
+    if (b < highlight_first)
+      color = cv::Scalar(255, 0, 0);
     cv::rectangle(hist_img, cv::Point(b*vscale, height),
                 cv::Point(b*vscale+vscale, height-bin_val*hscale),
-                cv::Scalar::all(255),
+                color,
                 -1 );
   }
-  return vscale;
 }
 //}
 
@@ -79,8 +81,8 @@ int main(int argc, char** argv)
       const int hc = 1000;
       cv::Mat disp_im = cv::Mat::zeros(hr + bot_rows, hc + right_cols, CV_8UC3);
       cv::Mat hist_roi = disp_im(cv::Rect(cv::Point(0, 0), cv::Size(hr, hc)));
-      const float vscale = draw_hist(hist_msg.bins, hist_roi);
-      hist_roi(cv::Rect(cv::Point(vscale*hist_msg.bin_mark, 0), cv::Point(vscale*hist_msg.bin_mark+1, hc-1))) = cv::Scalar(255, 0, 0);
+      draw_hist(hist_msg.bins, hist_roi, hist_msg.bin_mark);
+      /* hist_roi(cv::Rect(cv::Point(vscale*hist_msg.bin_mark, 0), cv::Point(vscale*hist_msg.bin_mark+1, hc-1))) = cv::Scalar(255, 0, 0); */
       cv::imshow(winname, disp_im);
       cv::waitKey(1);
     }
