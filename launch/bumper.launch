@@ -32,7 +32,7 @@
 
   <group ns="$(arg uav_name)">
     
-    <node pkg="nodelet" type="nodelet" name="mrs_bumper" args="$(arg nodelet_load)" output="screen" launch-prefix="$(arg launch_prefix)">
+    <node pkg="nodelet" type="nodelet" name="bumper" args="$(arg nodelet_load)" output="screen" launch-prefix="$(arg launch_prefix)">
       
       <param name="uav_name" value="$(arg uav_name)" />
       <param name="path_to_mask" value="$(arg mask_filename)" />
@@ -44,6 +44,7 @@
       <remap from="~lidar_2d" to="$(arg lidar_2d_topic)" />
       <remap from="~lidar_1d_down" to="$(arg lidar_1d_down_topic)" />
       <remap from="~lidar_1d_up" to="$(arg lidar_1d_up_topic)" />
+      <remap from="~obstacle_sectors" to="~obstacle_sectors" />
 
     </node>
   

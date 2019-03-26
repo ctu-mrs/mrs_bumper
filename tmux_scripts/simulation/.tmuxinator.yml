@@ -9,7 +9,7 @@ windows:
   - gazebo:
       layout: even-vertical
       panes:
-        - roslaunch mrs_bumper simulation.launch gui:=false
+        - roslaunch mrs_bumper simulation.launch gui:=true
   - spawn:
       layout: even-vertical
       panes:
@@ -27,9 +27,8 @@ windows:
           rosservice call /$UAV_NAME/mavros/cmd/arming 1;
           rosservice call /$UAV_NAME/mavros/set_mode 0 offboard;
           rosservice call /$UAV_NAME/control_manager/motors 1;
-          rosservice call /$UAV_NAME/mav_manager/takeoff;
+          rosservice call /$UAV_NAME/uav_manager/takeoff;
           sleep 5;
-          rosservice call /$UAV_NAME/control_manager/switch_tracker mrs_trackers/LineTracker;
           rosservice call /$UAV_NAME/control_manager/goto "goal: [-5.0, 0.0, 2.0, 0.0]";
           history -s rosservice call /$UAV_NAME/control_manager/goto "\"goal: [-5.0, 0.0, 2.0, 0.0]\"";
           '
@@ -43,4 +42,8 @@ windows:
       layout: even-vertical
       panes:
         - waitForControl; rosrun tf2_ros static_transform_publisher 0 0 0 0 0 0 fcu_uav1 fcu_uav1_horizontal
-        # - waitForControl; rviz
+        - waitForControl; roslaunch mrs_bumper rviz.launch
+  - gazebo_camera_follow:
+      layout: even-vertical
+      panes:
+        - waitForOdometry; gz camera -c gzclient_camera -f uav1; history -s gz camera -c gzclient_camera -f uav1
