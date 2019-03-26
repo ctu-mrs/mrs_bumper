@@ -43,7 +43,6 @@ namespace mrs_bumper
       pl.load_param("median_filter_size", m_median_filter_size, 1);
       m_roi.x_offset = pl.load_param2<int>("roi/x_offset", 0);
       m_roi.y_offset = pl.load_param2<int>("roi/y_offset", 0);
-      ROS_INFO("[Bumper]: m_roi.y_offset=%d", m_roi.y_offset);
       m_roi.width = pl.load_param2<int>("roi/width", 0);
       m_roi.height = pl.load_param2<int>("roi/height", 0);
       pl.load_param("roi/centering", m_roi_centering, false);
@@ -125,8 +124,19 @@ namespace mrs_bumper
         {
           if (m_roi.height == 0)
             m_roi.height = cinfo->height;
+          if (m_roi.height > cinfo->height)
+          {
+            ROS_ERROR("[%s]: Desired ROI height (%d) is larger than image height (%d) - clamping!", m_node_name.c_str(), m_roi.height, cinfo->height);
+            m_roi.height = cinfo->height;
+          }
+
           if (m_roi.width == 0)
             m_roi.width = cinfo->width;
+          if (m_roi.width > cinfo->width)
+          {
+            ROS_ERROR("[%s]: Desired ROI width (%d) is larger than image width (%d) - clamping!", m_node_name.c_str(), m_roi.width, cinfo->width);
+            m_roi.width = cinfo->width;
+          }
 
           m_roi.y_offset = (cinfo->height - m_roi.height) / 2;
           m_roi.x_offset = (cinfo->width - m_roi.width) / 2;
