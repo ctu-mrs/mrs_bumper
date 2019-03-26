@@ -23,6 +23,9 @@ typedef mrs_lib::DynamicReconfigureMgr<mrs_bumper::BumperConfig> drmgr_t;
 namespace mrs_bumper
 {
 
+  using ObstacleSectors = mrs_msgs::ObstacleSectors;
+  using Histogram = mrs_msgs::Histogram;
+
   class Bumper : public nodelet::Nodelet
   {
   public:
@@ -77,9 +80,9 @@ namespace mrs_bumper
       m_lidar_1d_up_sh = smgr.create_handler_threadsafe<sensor_msgs::RangeConstPtr, subs_time_consistent>("lidar_1d_up", 1, ros::TransportHints().tcpNoDelay(),
                                                                                                           ros::Duration(5.0));
       // Initialize publishers
-      m_obstacles_pub = nh.advertise<mrs_msgs::ObstacleSectors>("obstacle_sectors", 1);
+      m_obstacles_pub = nh.advertise<ObstacleSectors>("obstacle_sectors", 1);
       m_processed_depthmap_pub = nh.advertise<sensor_msgs::Image>("processed_depthmap", 1);
-      m_depthmap_hist_pub = nh.advertise<mrs_msgs::Histogram>("depthmap_histogram", 1);
+      m_depthmap_hist_pub = nh.advertise<Histogram>("depthmap_histogram", 1);
       //}
 
       /* Initialize other varibles //{ */
@@ -197,113 +200,34 @@ namespace mrs_bumper
       {
 
         /* Prepare the ObstacleSectors message to be published //{ */
-        mrs_msgs::ObstacleSectors obst_msg;
+        ObstacleSectors obst_msg;
         obst_msg.header.frame_id = m_frame_id;
         obst_msg.header.stamp = ros::Time::now();
         obst_msg.n_horizontal_sectors = m_n_horizontal_sectors;
         obst_msg.sectors_vertical_fov = m_vertical_fov;
-        obst_msg.sectors.resize(m_n_total_sectors, mrs_msgs::ObstacleSectors::OBSTACLE_UNKNOWN);
-        obst_msg.sector_sensors.resize(m_n_total_sectors, mrs_msgs::ObstacleSectors::SENSOR_NONE);
+        obst_msg.sectors.resize(m_n_total_sectors, ObstacleSectors::OBSTACLE_NO_DATA);
+        obst_msg.sector_sensors.resize(m_n_total_sectors, ObstacleSectors::SENSOR_NONE);
         //}
 
         /* Check data from the front-facing realsense //{ */
         if (m_depthmap_sh->new_data() && m_depth_cinfo_sh->has_data())
         {
-          cv_bridge::CvImage source_msg = *cv_bridge::toCvCopy(m_depthmap_sh->get_data(), std::string("16UC1"));
+          cv_bridge::CvImagePtr source_msg = cv_bridge::toCvCopy(m_depthmap_sh->get_data(), std::string("16UC1"));
+          double obstacle_dist = find_obstacles_in_depthmap(source_msg);
 
-          /* Apply ROI //{ */
-          cv::Rect roi(m_roi.x_offset, m_roi.y_offset, m_roi.width, m_roi.height);
-          source_msg.image = source_msg.image(roi);
-          //}
-
-          /* Prepare the image for obstacle detection //{ */
-          // create the detection image
-          cv::Mat detect_im = source_msg.image.clone();
-          cv::Mat raw_im = source_msg.image;
-          cv::Mat known_pixels;
-          if (m_unknown_pixel_value != std::numeric_limits<uint16_t>::max())
-          {
-            cv::compare(detect_im, m_unknown_pixel_value, known_pixels, cv::CMP_NE);
-          }
-
-          // dilate and erode the image if requested
-          {
-            const int elem_a = m_drmgr_ptr->config.structuring_element_a;
-            const int elem_b = m_drmgr_ptr->config.structuring_element_b;
-            cv::Mat element = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(elem_a, elem_b), cv::Point(-1, -1));
-            cv::dilate(detect_im, detect_im, element, cv::Point(-1, -1), m_drmgr_ptr->config.dilate_iterations);
-            cv::erode(detect_im, detect_im, element, cv::Point(-1, -1), m_drmgr_ptr->config.erode_iterations);
-
-            // erode without using zero (unknown) pixels
-            if (m_drmgr_ptr->config.erode_ignore_empty_iterations > 0)
-            {
-              cv::Mat unknown_as_max = detect_im;
-              if (m_unknown_pixel_value != std::numeric_limits<uint16_t>::max())
-              {
-                unknown_as_max = cv::Mat(raw_im.size(), CV_16UC1, std::numeric_limits<uint16_t>::max());
-                detect_im.copyTo(unknown_as_max, known_pixels);
-              }
-              cv::erode(unknown_as_max, detect_im, element, cv::Point(-1, -1), m_drmgr_ptr->config.erode_ignore_empty_iterations);
-            }
-          }
-          //}
-
-          // TODO: filter out ground?
-
-          m_hist_n_bins = m_drmgr_ptr->config.histogram_n_bins;
-          m_hist_quantile_area = m_drmgr_ptr->config.histogram_quantile_area;
-          m_max_depth = m_drmgr_ptr->config.max_depth;
-
-          cv::Mat usable_pixels;
-          if (m_mask_im.empty())
-            usable_pixels = known_pixels;
-          else
-            cv::bitwise_and(known_pixels, m_mask_im, usable_pixels);
-
-          const double depthmap_to_meters = 1.0 / 1000.0;
-          const double bin_max = m_max_depth / depthmap_to_meters;
-          const double bin_size = bin_max / m_hist_n_bins;
-          const auto hist = calculate_histogram(detect_im, m_hist_n_bins, bin_max, usable_pixels);
-#ifdef DEBUG
-          show_hist(hist);
-#endif
-          const int quantile = find_histogram_quantile(hist, m_hist_quantile_area);
-          const double obstacle_depth = quantile * bin_size * depthmap_to_meters;
-          const bool obstacle_sure = !(quantile == m_hist_n_bins);
-
+          // check if an obstacle was detected (*obstacle_sure*)
+          bool obstacle_sure = value_is_unknown(obstacle_dist);
           auto& cur_value = obst_msg.sectors.at(0);
           auto& cur_sensor = obst_msg.sector_sensors.at(0);
-          if (obstacle_sure && (cur_value == mrs_msgs::ObstacleSectors::OBSTACLE_UNKNOWN || obstacle_depth < cur_value))
+          // If the previous obstacle information in this sector is unknown or a closer
+          // obstacle was detected by this sensor, update the information.
+          if (value_is_unknown(cur_value) || (obstacle_sure && obstacle_dist < cur_value))
           {
-            cur_value = obstacle_depth;
-            cur_sensor = mrs_msgs::ObstacleSectors::SENSOR_DEPTH;
+            cur_value = obstacle_dist;
+            cur_sensor = ObstacleSectors::SENSOR_DEPTH;
           }
-          if (obst_msg.header.stamp > source_msg.header.stamp)
-            obst_msg.header.stamp = source_msg.header.stamp;
-
-          if (m_processed_depthmap_pub.getNumSubscribers() > 0)
-          {
-            /* Create and publish the debug image //{ */
-            cv_bridge::CvImage processed_depthmap_cvb = source_msg;
-            processed_depthmap_cvb.image = detect_im;
-            sensor_msgs::ImageConstPtr out_msg = processed_depthmap_cvb.toImageMsg();
-            m_processed_depthmap_pub.publish(out_msg);
-            //}
-          }
-
-          if (m_depthmap_hist_pub.getNumSubscribers() > 0)
-          {
-            /* Create and publish the debug image //{ */
-            mrs_msgs::Histogram out_msg;
-            out_msg.unit = "mm";
-            out_msg.bin_size = bin_size;
-            out_msg.bin_max = bin_max;
-            out_msg.bin_min = 0;
-            out_msg.bin_mark = quantile;
-            out_msg.bins = hist;
-            m_depthmap_hist_pub.publish(out_msg);
-            //}
-          }
+          if (obst_msg.header.stamp > source_msg->header.stamp)
+            obst_msg.header.stamp = source_msg->header.stamp;
         }
         //}
 
@@ -315,15 +239,19 @@ namespace mrs_bumper
           std::vector<double> obstacle_distances = find_obstacles_in_horizontal_sectors(source_msg);
           for (unsigned sector_it = 0; sector_it < m_n_horizontal_sectors; sector_it++)
           {
+            // get the current obstacle distance
             const double obstacle_dist = obstacle_distances.at(sector_it);
-            if (obstacle_dist == mrs_msgs::ObstacleSectors::OBSTACLE_UNKNOWN)
-              continue;
+
+            // check if an obstacle was detected (*obstacle_sure*)
+            bool obstacle_sure = value_is_unknown(obstacle_dist);
             auto& cur_value = obst_msg.sectors.at(sector_it);
             auto& cur_sensor = obst_msg.sector_sensors.at(sector_it);
-            if (cur_value == mrs_msgs::ObstacleSectors::OBSTACLE_UNKNOWN || obstacle_dist < cur_value)
+            // If the previous obstacle information in this sector is unknown or a closer
+            // obstacle was detected by this sensor, update the information.
+            if (value_is_unknown(cur_value) || (obstacle_sure && obstacle_dist < cur_value))
             {
               cur_value = obstacle_dist;
-              cur_sensor = mrs_msgs::ObstacleSectors::SENSOR_LIDAR_2D;
+              cur_sensor = ObstacleSectors::SENSOR_LIDAR_2D;
             }
             if (obst_msg.header.stamp > source_msg.header.stamp)
               obst_msg.header.stamp = source_msg.header.stamp;
@@ -334,14 +262,22 @@ namespace mrs_bumper
         /* Check data from the down-facing lidar //{ */
         if (m_lidar_1d_down_sh->new_data())
         {
+          // get the current obstacle distance
           sensor_msgs::Range source_msg = *m_lidar_1d_down_sh->get_data();
-          const bool obstacle_sure = source_msg.range > source_msg.min_range && source_msg.range < source_msg.max_range;
+          double obstacle_dist = source_msg.range;
+          if (source_msg.range <= source_msg.min_range && source_msg.range >= source_msg.max_range)
+            obstacle_dist = ObstacleSectors::OBSTACLE_NOT_DETECTED;
+
+          // check if an obstacle was detected (*obstacle_sure*)
+          bool obstacle_sure = value_is_unknown(obstacle_dist);
           auto& cur_value = obst_msg.sectors.at(m_bottom_sector_idx);
           auto& cur_sensor = obst_msg.sector_sensors.at(m_bottom_sector_idx);
-          if (obstacle_sure && (cur_value == mrs_msgs::ObstacleSectors::OBSTACLE_UNKNOWN || source_msg.range < cur_value))
+          // If the previous obstacle information in this sector is unknown or a closer
+          // obstacle was detected by this sensor, update the information.
+          if (value_is_unknown(cur_value) || (obstacle_sure && obstacle_dist < cur_value))
           {
             cur_value = source_msg.range;
-            cur_sensor = mrs_msgs::ObstacleSectors::SENSOR_LIDAR_1D;
+            cur_sensor = ObstacleSectors::SENSOR_LIDAR_1D;
           }
           if (obst_msg.header.stamp > source_msg.header.stamp)
             obst_msg.header.stamp = source_msg.header.stamp;
@@ -351,14 +287,22 @@ namespace mrs_bumper
         /* Check data from the up-facing lidar //{ */
         if (m_lidar_1d_up_sh->new_data())
         {
+          // get the current obstacle distance
           sensor_msgs::Range source_msg = *m_lidar_1d_up_sh->get_data();
-          const bool obstacle_sure = source_msg.range > source_msg.min_range && source_msg.range < source_msg.max_range;
+          double obstacle_dist = source_msg.range;
+          if (source_msg.range <= source_msg.min_range && source_msg.range >= source_msg.max_range)
+            obstacle_dist = ObstacleSectors::OBSTACLE_NOT_DETECTED;
+
+          // check if an obstacle was detected (*obstacle_sure*)
+          bool obstacle_sure = value_is_unknown(obstacle_dist);
           auto& cur_value = obst_msg.sectors.at(m_top_sector_idx);
           auto& cur_sensor = obst_msg.sector_sensors.at(m_top_sector_idx);
-          if (obstacle_sure && (cur_value == mrs_msgs::ObstacleSectors::OBSTACLE_UNKNOWN || source_msg.range < cur_value))
+          // If the previous obstacle information in this sector is unknown or a closer
+          // obstacle was detected by this sensor, update the information.
+          if (value_is_unknown(cur_value) || (obstacle_sure && obstacle_dist < cur_value))
           {
             cur_value = source_msg.range;
-            cur_sensor = mrs_msgs::ObstacleSectors::SENSOR_LIDAR_1D;
+            cur_sensor = ObstacleSectors::SENSOR_LIDAR_1D;
           }
           if (obst_msg.header.stamp > source_msg.header.stamp)
             obst_msg.header.stamp = source_msg.header.stamp;
@@ -428,6 +372,13 @@ namespace mrs_bumper
     // |                       Helper methods                       |
     // --------------------------------------------------------------
 
+    /* value_is_unknown() method //{ */
+    bool value_is_unknown(ObstacleSectors::_sectors_type::value_type value)
+    {
+      return value == ObstacleSectors::OBSTACLE_NO_DATA || value == ObstacleSectors::OBSTACLE_NOT_DETECTED;
+    }
+    //}
+
     using hist_t = std::vector<float>;
     /* calculate_histogram() method //{ */
     hist_t calculate_histogram(const cv::Mat& img, const int n_bins, const double bin_max, const cv::Mat& mask)
@@ -457,10 +408,102 @@ namespace mrs_bumper
     }
     //}
 
+    /* find_obstacles_in_depthmap() method //{ */
+    double find_obstacles_in_depthmap(cv_bridge::CvImagePtr source_msg)
+    {
+      /* Apply ROI //{ */
+      cv::Rect roi(m_roi.x_offset, m_roi.y_offset, m_roi.width, m_roi.height);
+      source_msg->image = source_msg->image(roi);
+      //}
+
+      /* Prepare the image for obstacle detection //{ */
+      // create the detection image
+      cv::Mat detect_im = source_msg->image.clone();
+      cv::Mat raw_im = source_msg->image;
+      cv::Mat known_pixels;
+      if (m_unknown_pixel_value != std::numeric_limits<uint16_t>::max())
+      {
+        cv::compare(detect_im, m_unknown_pixel_value, known_pixels, cv::CMP_NE);
+      }
+
+      // dilate and erode the image if requested
+      {
+        const int elem_a = m_drmgr_ptr->config.structuring_element_a;
+        const int elem_b = m_drmgr_ptr->config.structuring_element_b;
+        cv::Mat element = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(elem_a, elem_b), cv::Point(-1, -1));
+        cv::dilate(detect_im, detect_im, element, cv::Point(-1, -1), m_drmgr_ptr->config.dilate_iterations);
+        cv::erode(detect_im, detect_im, element, cv::Point(-1, -1), m_drmgr_ptr->config.erode_iterations);
+
+        // erode without using zero (unknown) pixels
+        if (m_drmgr_ptr->config.erode_ignore_empty_iterations > 0)
+        {
+          cv::Mat unknown_as_max = detect_im;
+          if (m_unknown_pixel_value != std::numeric_limits<uint16_t>::max())
+          {
+            unknown_as_max = cv::Mat(raw_im.size(), CV_16UC1, std::numeric_limits<uint16_t>::max());
+            detect_im.copyTo(unknown_as_max, known_pixels);
+          }
+          cv::erode(unknown_as_max, detect_im, element, cv::Point(-1, -1), m_drmgr_ptr->config.erode_ignore_empty_iterations);
+        }
+      }
+      //}
+
+      // TODO: filter out ground?
+
+      m_hist_n_bins = m_drmgr_ptr->config.histogram_n_bins;
+      m_hist_quantile_area = m_drmgr_ptr->config.histogram_quantile_area;
+      m_max_depth = m_drmgr_ptr->config.max_depth;
+
+      cv::Mat usable_pixels;
+      if (m_mask_im.empty())
+        usable_pixels = known_pixels;
+      else
+        cv::bitwise_and(known_pixels, m_mask_im, usable_pixels);
+
+      const double depthmap_to_meters = 1.0 / 1000.0;
+      const double bin_max = m_max_depth / depthmap_to_meters;
+      const double bin_size = bin_max / m_hist_n_bins;
+      const auto hist = calculate_histogram(detect_im, m_hist_n_bins, bin_max, usable_pixels);
+#ifdef DEBUG
+      show_hist(hist);
+#endif
+      const int quantile = find_histogram_quantile(hist, m_hist_quantile_area);
+      double obstacle_dist = quantile * bin_size * depthmap_to_meters;
+      if (quantile == m_hist_n_bins)
+        obstacle_dist = ObstacleSectors::OBSTACLE_NOT_DETECTED;
+
+      if (m_processed_depthmap_pub.getNumSubscribers() > 0)
+      {
+        /* Create and publish the debug image //{ */
+        cv_bridge::CvImagePtr processed_depthmap_cvb = source_msg;
+        processed_depthmap_cvb->image = detect_im;
+        sensor_msgs::ImageConstPtr out_msg = processed_depthmap_cvb->toImageMsg();
+        m_processed_depthmap_pub.publish(out_msg);
+        //}
+      }
+
+      if (m_depthmap_hist_pub.getNumSubscribers() > 0)
+      {
+        /* Create and publish the debug image //{ */
+        Histogram out_msg;
+        out_msg.unit = "mm";
+        out_msg.bin_size = bin_size;
+        out_msg.bin_max = bin_max;
+        out_msg.bin_min = 0;
+        out_msg.bin_mark = quantile;
+        out_msg.bins = hist;
+        m_depthmap_hist_pub.publish(out_msg);
+        //}
+      }
+
+      return obstacle_dist;
+    }
+    //}
+
     /* update_filter_sizes() method //{ */
     void update_filter_sizes()
     {
-      const boost::circular_buffer<double> init_bfr(m_median_filter_size, mrs_msgs::ObstacleSectors::OBSTACLE_UNKNOWN);
+      const boost::circular_buffer<double> init_bfr(m_median_filter_size, ObstacleSectors::OBSTACLE_NO_DATA);
       m_sector_filters.resize(m_n_total_sectors, init_bfr);
       for (auto& fil : m_sector_filters)
         fil.rset_capacity(m_median_filter_size);
@@ -513,7 +556,7 @@ namespace mrs_bumper
             min_range = ray_range;
         }
         if (min_range < scan_msg.range_min || min_range > scan_msg.range_max)
-          min_range = mrs_msgs::ObstacleSectors::OBSTACLE_UNKNOWN;
+          min_range = ObstacleSectors::OBSTACLE_NOT_DETECTED;
         ret.push_back(min_range);
       }
       return ret;
