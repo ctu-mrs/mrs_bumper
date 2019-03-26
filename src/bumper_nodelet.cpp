@@ -23,10 +23,12 @@ typedef mrs_lib::DynamicReconfigureMgr<mrs_bumper::BumperConfig> drmgr_t;
 namespace mrs_bumper
 {
 
-  class Bumper : public nodelet::Nodelet {
+  class Bumper : public nodelet::Nodelet
+  {
   public:
     /* onInit() method //{ */
-    void onInit() {
+    void onInit()
+    {
       ros::NodeHandle nh = nodelet::Nodelet::getMTPrivateNodeHandle();
 
       m_node_name = "Bumper";
@@ -41,8 +43,8 @@ namespace mrs_bumper
       pl.load_param("median_filter_size", m_median_filter_size, 1);
       m_roi.x_offset = pl.load_param2<int>("roi/x_offset", 0);
       m_roi.y_offset = pl.load_param2<int>("roi/y_offset", 0);
-      m_roi.width    = pl.load_param2<int>("roi/width", 0);
-      m_roi.height   = pl.load_param2<int>("roi/height", 0);
+      m_roi.width = pl.load_param2<int>("roi/width", 0);
+      m_roi.height = pl.load_param2<int>("roi/height", 0);
       pl.load_param("roi/centering", m_roi_centering, false);
       pl.load_param("histogram_n_bins", m_hist_n_bins, 1000);
       pl.load_param("histogram_quantile_area", m_hist_quantile_area, 200);
@@ -51,7 +53,8 @@ namespace mrs_bumper
 
       // LOAD DYNAMIC PARAMETERS
       // CHECK LOADING STATUS
-      if (!pl.loaded_successfully()) {
+      if (!pl.loaded_successfully())
+      {
         ROS_ERROR("Some compulsory parameters were not loaded successfully, ending the node");
         ros::shutdown();
       }
@@ -62,8 +65,8 @@ namespace mrs_bumper
       /* Create publishers and subscribers //{ */
       // Initialize subscribers
       mrs_lib::SubscribeMgr smgr(nh, m_node_name);
-      const bool            subs_time_consistent = false;
-      m_depthmap_sh    = smgr.create_handler_threadsafe<sensor_msgs::ImageConstPtr, subs_time_consistent>("depthmap", 1, ros::TransportHints().tcpNoDelay(),
+      const bool subs_time_consistent = false;
+      m_depthmap_sh = smgr.create_handler_threadsafe<sensor_msgs::ImageConstPtr, subs_time_consistent>("depthmap", 1, ros::TransportHints().tcpNoDelay(),
                                                                                                        ros::Duration(5.0));
       m_depth_cinfo_sh = smgr.create_handler_threadsafe<sensor_msgs::CameraInfoConstPtr, subs_time_consistent>(
           "depth_camera_info", 1, ros::TransportHints().tcpNoDelay(), ros::Duration(5.0));
@@ -74,20 +77,24 @@ namespace mrs_bumper
       m_lidar_1d_up_sh = smgr.create_handler_threadsafe<sensor_msgs::RangeConstPtr, subs_time_consistent>("lidar_1d_up", 1, ros::TransportHints().tcpNoDelay(),
                                                                                                           ros::Duration(5.0));
       // Initialize publishers
-      m_obstacles_pub          = nh.advertise<mrs_msgs::ObstacleSectors>("obstacle_sectors", 1);
+      m_obstacles_pub = nh.advertise<mrs_msgs::ObstacleSectors>("obstacle_sectors", 1);
       m_processed_depthmap_pub = nh.advertise<sensor_msgs::Image>("processed_depthmap", 1);
-      m_depthmap_hist_pub      = nh.advertise<mrs_msgs::Histogram>("depthmap_histogram", 1);
+      m_depthmap_hist_pub = nh.advertise<mrs_msgs::Histogram>("depthmap_histogram", 1);
       //}
 
       /* Initialize other varibles //{ */
-      if (path_to_mask.empty()) {
+      if (path_to_mask.empty())
+      {
         ROS_INFO("[%s]: Not using image mask", ros::this_node::getName().c_str());
-      } else {
+      } else
+      {
         m_mask_im = cv::imread(path_to_mask, cv::IMREAD_GRAYSCALE);
-        if (m_mask_im.empty()) {
+        if (m_mask_im.empty())
+        {
           ROS_ERROR("[%s]: Error loading image mask from file '%s'! Ending node.", ros::this_node::getName().c_str(), path_to_mask.c_str());
           ros::shutdown();
-        } else if (m_mask_im.type() != CV_8UC1) {
+        } else if (m_mask_im.type() != CV_8UC1)
+        {
           ROS_ERROR("[%s]: Loaded image mask has unexpected type: '%u' (expected %u)! Ending node.", ros::this_node::getName().c_str(), m_mask_im.type(),
                     CV_8UC1);
           ros::shutdown();
@@ -104,15 +111,29 @@ namespace mrs_bumper
     //}
 
     /* main_loop() method //{ */
-    void main_loop([[maybe_unused]] const ros::TimerEvent& evt) {
+    void main_loop([[maybe_unused]] const ros::TimerEvent& evt)
+    {
       /* Initialize number of horizontal sectors etc from camera info message //{ */
-      if (!m_sectors_initialized && m_depth_cinfo_sh->new_data()) {
+      if (!m_sectors_initialized && m_depth_cinfo_sh->new_data())
+      {
         const auto cinfo = m_depth_cinfo_sh->get_data();
-        if (m_roi_centering) {
+        if (m_roi_centering)
+        {
           if (m_roi.height == 0)
             m_roi.height = cinfo->height;
+          if (m_roi.height > cinfo->height)
+          {
+            ROS_ERROR("[%s]: Desired ROI height (%d) is larger than image height (%d) - clamping!", m_node_name.c_str(), m_roi.height, cinfo->height);
+            m_roi.height = cinfo->height;
+          }
+
           if (m_roi.width == 0)
             m_roi.width = cinfo->width;
+          if (m_roi.width > cinfo->width)
+          {
+            ROS_ERROR("[%s]: Desired ROI width (%d) is larger than image width (%d) - clamping!", m_node_name.c_str(), m_roi.width, cinfo->width);
+            m_roi.width = cinfo->width;
+          }
 
           m_roi.y_offset = (cinfo->height - m_roi.height) / 2;
           m_roi.x_offset = (cinfo->width - m_roi.width) / 2;
@@ -123,18 +144,18 @@ namespace mrs_bumper
         if (m_roi.x_offset + m_roi.width > unsigned(cinfo->width) || m_roi.width == 0)
           m_roi.width = std::clamp(int(cinfo->width - m_roi.x_offset), 0, int(cinfo->width));
 
-        const double w              = m_roi.width;
-        const double h              = m_roi.height;
-        const double fx             = cinfo->K[0];
-        const double fy             = cinfo->K[4];
+        const double w = m_roi.width;
+        const double h = m_roi.height;
+        const double fx = cinfo->K[0];
+        const double fy = cinfo->K[4];
         const double horizontal_fov = std::atan2(w / 2.0, fx) * 2.0;
-        const double vectical_fov   = std::atan2(h / 2.0, fy) * 2.0;
-        m_n_horizontal_sectors      = std::ceil(2.0 * M_PI / horizontal_fov);
-        m_bottom_sector_idx         = m_n_horizontal_sectors;
-        m_top_sector_idx            = m_n_horizontal_sectors + 1;
-        m_horizontal_sector_ranges  = initialize_ranges(m_n_horizontal_sectors);
-        m_n_total_sectors           = m_n_horizontal_sectors + 2;
-        m_vertical_fov              = vectical_fov;
+        const double vectical_fov = std::atan2(h / 2.0, fy) * 2.0;
+        m_n_horizontal_sectors = std::ceil(2.0 * M_PI / horizontal_fov);
+        m_bottom_sector_idx = m_n_horizontal_sectors;
+        m_top_sector_idx = m_n_horizontal_sectors + 1;
+        m_horizontal_sector_ranges = initialize_ranges(m_n_horizontal_sectors);
+        m_n_total_sectors = m_n_horizontal_sectors + 2;
+        m_vertical_fov = vectical_fov;
         update_filter_sizes();
 
         ROS_INFO("[Bumper]: Depth camera horizontal FOV: %.1fdeg", horizontal_fov / M_PI * 180.0);
@@ -144,30 +165,37 @@ namespace mrs_bumper
       }
 
       // apply possible changes from dynamic reconfigure
-      if (m_median_filter_size != m_drmgr_ptr->config.median_filter_size) {
-        if (m_drmgr_ptr->config.median_filter_size > 0) {
+      if (m_median_filter_size != m_drmgr_ptr->config.median_filter_size)
+      {
+        if (m_drmgr_ptr->config.median_filter_size > 0)
+        {
           m_median_filter_size = m_drmgr_ptr->config.median_filter_size;
           update_filter_sizes();
-        } else {
+        } else
+        {
           ROS_ERROR("[Bumper]: Size of median filter cannot be <= 0: %d! Ignoring new value.", m_drmgr_ptr->config.median_filter_size);
         }
       }
 
-      if (m_update_rate != m_drmgr_ptr->config.update_rate) {
-        if (m_drmgr_ptr->config.update_rate > 0.0) {
+      if (m_update_rate != m_drmgr_ptr->config.update_rate)
+      {
+        if (m_drmgr_ptr->config.update_rate > 0.0)
+        {
           m_update_rate = m_drmgr_ptr->config.update_rate;
           m_main_loop_timer.setPeriod(ros::Duration(1.0 / m_update_rate));
-        } else {
+        } else
+        {
           ROS_ERROR("[Bumper]: Update rate cannot be <= 0: %lf! Ignoring new value.", m_drmgr_ptr->config.update_rate);
         }
       }
       //}
 
-      if (m_sectors_initialized) {
+      if (m_sectors_initialized)
+      {
         /* Prepare the ObstacleSectors message to be published //{ */
         mrs_msgs::ObstacleSectors obst_msg;
-        obst_msg.header.frame_id      = m_frame_id;
-        obst_msg.header.stamp         = ros::Time::now();
+        obst_msg.header.frame_id = m_frame_id;
+        obst_msg.header.stamp = ros::Time::now();
         obst_msg.n_horizontal_sectors = m_n_horizontal_sectors;
         obst_msg.sectors_vertical_fov = m_vertical_fov;
         obst_msg.sectors.resize(m_n_total_sectors, mrs_msgs::ObstacleSectors::OBSTACLE_UNKNOWN);
@@ -175,7 +203,8 @@ namespace mrs_bumper
         //}
 
         /* Check data from the front-facing realsense //{ */
-        if (m_depthmap_sh->new_data() && m_depth_cinfo_sh->has_data()) {
+        if (m_depthmap_sh->new_data() && m_depth_cinfo_sh->has_data())
+        {
           cv_bridge::CvImage source_msg = *cv_bridge::toCvCopy(m_depthmap_sh->get_data(), std::string("16UC1"));
 
           /* Apply ROI //{ */
@@ -186,24 +215,27 @@ namespace mrs_bumper
           /* Prepare the image for obstacle detection //{ */
           // create the detection image
           cv::Mat detect_im = source_msg.image.clone();
-          cv::Mat raw_im    = source_msg.image;
+          cv::Mat raw_im = source_msg.image;
           cv::Mat known_pixels;
-          if (m_unknown_pixel_value != std::numeric_limits<uint16_t>::max()) {
+          if (m_unknown_pixel_value != std::numeric_limits<uint16_t>::max())
+          {
             cv::compare(detect_im, m_unknown_pixel_value, known_pixels, cv::CMP_NE);
           }
 
           // dilate and erode the image if requested
           {
-            const int elem_a  = m_drmgr_ptr->config.structuring_element_a;
-            const int elem_b  = m_drmgr_ptr->config.structuring_element_b;
-            cv::Mat   element = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(elem_a, elem_b), cv::Point(-1, -1));
+            const int elem_a = m_drmgr_ptr->config.structuring_element_a;
+            const int elem_b = m_drmgr_ptr->config.structuring_element_b;
+            cv::Mat element = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(elem_a, elem_b), cv::Point(-1, -1));
             cv::dilate(detect_im, detect_im, element, cv::Point(-1, -1), m_drmgr_ptr->config.dilate_iterations);
             cv::erode(detect_im, detect_im, element, cv::Point(-1, -1), m_drmgr_ptr->config.erode_iterations);
 
             // erode without using zero (unknown) pixels
-            if (m_drmgr_ptr->config.erode_ignore_empty_iterations > 0) {
+            if (m_drmgr_ptr->config.erode_ignore_empty_iterations > 0)
+            {
               cv::Mat unknown_as_max = detect_im;
-              if (m_unknown_pixel_value != std::numeric_limits<uint16_t>::max()) {
+              if (m_unknown_pixel_value != std::numeric_limits<uint16_t>::max())
+              {
                 unknown_as_max = cv::Mat(raw_im.size(), CV_16UC1, std::numeric_limits<uint16_t>::max());
                 detect_im.copyTo(unknown_as_max, known_pixels);
               }
@@ -214,9 +246,9 @@ namespace mrs_bumper
 
           // TODO: filter out ground?
 
-          m_hist_n_bins        = m_drmgr_ptr->config.histogram_n_bins;
+          m_hist_n_bins = m_drmgr_ptr->config.histogram_n_bins;
           m_hist_quantile_area = m_drmgr_ptr->config.histogram_quantile_area;
-          m_max_depth          = m_drmgr_ptr->config.max_depth;
+          m_max_depth = m_drmgr_ptr->config.max_depth;
 
           cv::Mat usable_pixels;
           if (m_mask_im.empty())
@@ -224,43 +256,46 @@ namespace mrs_bumper
           else
             cv::bitwise_and(known_pixels, m_mask_im, usable_pixels);
           const double depthmap_to_meters = 1.0 / 1000.0;
-          const double bin_max            = m_max_depth / depthmap_to_meters;
-          const double bin_size           = bin_max / m_hist_n_bins;
-          const auto   hist               = calculate_histogram(detect_im, m_hist_n_bins, bin_max, usable_pixels);
+          const double bin_max = m_max_depth / depthmap_to_meters;
+          const double bin_size = bin_max / m_hist_n_bins;
+          const auto hist = calculate_histogram(detect_im, m_hist_n_bins, bin_max, usable_pixels);
 #ifdef DEBUG
           show_hist(hist);
 #endif
-          const int    quantile       = find_histogram_quantile(hist, m_hist_quantile_area);
+          const int quantile = find_histogram_quantile(hist, m_hist_quantile_area);
           const double obstacle_depth = quantile * bin_size * depthmap_to_meters;
-          const bool   obstacle_sure  = !(quantile == m_hist_n_bins);
+          const bool obstacle_sure = !(quantile == m_hist_n_bins);
 
-          auto& cur_value  = obst_msg.sectors.at(0);
+          auto& cur_value = obst_msg.sectors.at(0);
           auto& cur_sensor = obst_msg.sector_sensors.at(0);
-          if (obstacle_sure && (cur_value == mrs_msgs::ObstacleSectors::OBSTACLE_UNKNOWN || obstacle_depth < cur_value)) {
-            cur_value  = obstacle_depth;
+          if (obstacle_sure && (cur_value == mrs_msgs::ObstacleSectors::OBSTACLE_UNKNOWN || obstacle_depth < cur_value))
+          {
+            cur_value = obstacle_depth;
             cur_sensor = mrs_msgs::ObstacleSectors::SENSOR_DEPTH;
           }
           if (obst_msg.header.stamp > source_msg.header.stamp)
             obst_msg.header.stamp = source_msg.header.stamp;
 
-          if (m_processed_depthmap_pub.getNumSubscribers() > 0) {
+          if (m_processed_depthmap_pub.getNumSubscribers() > 0)
+          {
             /* Create and publish the debug image //{ */
             cv_bridge::CvImage processed_depthmap_cvb = source_msg;
-            processed_depthmap_cvb.image              = detect_im;
-            sensor_msgs::ImageConstPtr out_msg        = processed_depthmap_cvb.toImageMsg();
+            processed_depthmap_cvb.image = detect_im;
+            sensor_msgs::ImageConstPtr out_msg = processed_depthmap_cvb.toImageMsg();
             m_processed_depthmap_pub.publish(out_msg);
             //}
           }
 
-          if (m_depthmap_hist_pub.getNumSubscribers() > 0) {
+          if (m_depthmap_hist_pub.getNumSubscribers() > 0)
+          {
             /* Create and publish the debug image //{ */
             mrs_msgs::Histogram out_msg;
-            out_msg.unit     = "mm";
+            out_msg.unit = "mm";
             out_msg.bin_size = bin_size;
-            out_msg.bin_max  = bin_max;
-            out_msg.bin_min  = 0;
+            out_msg.bin_max = bin_max;
+            out_msg.bin_min = 0;
             out_msg.bin_mark = quantile;
-            out_msg.bins     = hist;
+            out_msg.bins = hist;
             m_depthmap_hist_pub.publish(out_msg);
             //}
           }
@@ -268,18 +303,21 @@ namespace mrs_bumper
         //}
 
         /* Check data from the horizontal 2D lidar //{ */
-        if (m_lidar_2d_sh->new_data()) {
+        if (m_lidar_2d_sh->new_data())
+        {
           sensor_msgs::LaserScan source_msg = *m_lidar_2d_sh->get_data();
 
           std::vector<double> obstacle_distances = find_obstacles_in_horizontal_sectors(source_msg);
-          for (unsigned sector_it = 0; sector_it < m_n_horizontal_sectors; sector_it++) {
+          for (unsigned sector_it = 0; sector_it < m_n_horizontal_sectors; sector_it++)
+          {
             const double obstacle_dist = obstacle_distances.at(sector_it);
             if (obstacle_dist == mrs_msgs::ObstacleSectors::OBSTACLE_UNKNOWN)
               continue;
-            auto& cur_value  = obst_msg.sectors.at(sector_it);
+            auto& cur_value = obst_msg.sectors.at(sector_it);
             auto& cur_sensor = obst_msg.sector_sensors.at(sector_it);
-            if (cur_value == mrs_msgs::ObstacleSectors::OBSTACLE_UNKNOWN || obstacle_dist < cur_value) {
-              cur_value  = obstacle_dist;
+            if (cur_value == mrs_msgs::ObstacleSectors::OBSTACLE_UNKNOWN || obstacle_dist < cur_value)
+            {
+              cur_value = obstacle_dist;
               cur_sensor = mrs_msgs::ObstacleSectors::SENSOR_LIDAR_2D;
             }
             if (obst_msg.header.stamp > source_msg.header.stamp)
@@ -289,13 +327,15 @@ namespace mrs_bumper
         //}
 
         /* Check data from the down-facing lidar //{ */
-        if (m_lidar_1d_down_sh->new_data()) {
-          sensor_msgs::Range source_msg    = *m_lidar_1d_down_sh->get_data();
-          const bool         obstacle_sure = source_msg.range > source_msg.min_range && source_msg.range < source_msg.max_range;
-          auto&              cur_value     = obst_msg.sectors.at(m_bottom_sector_idx);
-          auto&              cur_sensor    = obst_msg.sector_sensors.at(m_bottom_sector_idx);
-          if (obstacle_sure && (cur_value == mrs_msgs::ObstacleSectors::OBSTACLE_UNKNOWN || source_msg.range < cur_value)) {
-            cur_value  = source_msg.range;
+        if (m_lidar_1d_down_sh->new_data())
+        {
+          sensor_msgs::Range source_msg = *m_lidar_1d_down_sh->get_data();
+          const bool obstacle_sure = source_msg.range > source_msg.min_range && source_msg.range < source_msg.max_range;
+          auto& cur_value = obst_msg.sectors.at(m_bottom_sector_idx);
+          auto& cur_sensor = obst_msg.sector_sensors.at(m_bottom_sector_idx);
+          if (obstacle_sure && (cur_value == mrs_msgs::ObstacleSectors::OBSTACLE_UNKNOWN || source_msg.range < cur_value))
+          {
+            cur_value = source_msg.range;
             cur_sensor = mrs_msgs::ObstacleSectors::SENSOR_LIDAR_1D;
           }
           if (obst_msg.header.stamp > source_msg.header.stamp)
@@ -304,13 +344,15 @@ namespace mrs_bumper
         //}
 
         /* Check data from the up-facing lidar //{ */
-        if (m_lidar_1d_up_sh->new_data()) {
-          sensor_msgs::Range source_msg    = *m_lidar_1d_up_sh->get_data();
-          const bool         obstacle_sure = source_msg.range > source_msg.min_range && source_msg.range < source_msg.max_range;
-          auto&              cur_value     = obst_msg.sectors.at(m_top_sector_idx);
-          auto&              cur_sensor    = obst_msg.sector_sensors.at(m_top_sector_idx);
-          if (obstacle_sure && (cur_value == mrs_msgs::ObstacleSectors::OBSTACLE_UNKNOWN || source_msg.range < cur_value)) {
-            cur_value  = source_msg.range;
+        if (m_lidar_1d_up_sh->new_data())
+        {
+          sensor_msgs::Range source_msg = *m_lidar_1d_up_sh->get_data();
+          const bool obstacle_sure = source_msg.range > source_msg.min_range && source_msg.range < source_msg.max_range;
+          auto& cur_value = obst_msg.sectors.at(m_top_sector_idx);
+          auto& cur_sensor = obst_msg.sector_sensors.at(m_top_sector_idx);
+          if (obstacle_sure && (cur_value == mrs_msgs::ObstacleSectors::OBSTACLE_UNKNOWN || source_msg.range < cur_value))
+          {
+            cur_value = source_msg.range;
             cur_sensor = mrs_msgs::ObstacleSectors::SENSOR_LIDAR_1D;
           }
           if (obst_msg.header.stamp > source_msg.header.stamp)
@@ -333,29 +375,29 @@ namespace mrs_bumper
     // --------------------------------------------------------------
 
     /* Parameters, loaded from ROS //{ */
-    double                        m_update_rate;
-    int                           m_unknown_pixel_value;
-    std::string                   m_frame_id;
-    int                           m_median_filter_size;
+    double m_update_rate;
+    int m_unknown_pixel_value;
+    std::string m_frame_id;
+    int m_median_filter_size;
     sensor_msgs::RegionOfInterest m_roi;
-    bool                          m_roi_centering;
-    int                           m_hist_n_bins;
-    int                           m_hist_quantile_area;
-    double                        m_max_depth;
+    bool m_roi_centering;
+    int m_hist_n_bins;
+    int m_hist_quantile_area;
+    double m_max_depth;
     //}
 
     /* ROS related variables (subscribers, timers etc.) //{ */
-    std::unique_ptr<drmgr_t>                                      m_drmgr_ptr;
-    mrs_lib::SubscribeHandlerPtr<sensor_msgs::ImageConstPtr>      m_depthmap_sh;
+    std::unique_ptr<drmgr_t> m_drmgr_ptr;
+    mrs_lib::SubscribeHandlerPtr<sensor_msgs::ImageConstPtr> m_depthmap_sh;
     mrs_lib::SubscribeHandlerPtr<sensor_msgs::CameraInfoConstPtr> m_depth_cinfo_sh;
-    mrs_lib::SubscribeHandlerPtr<sensor_msgs::LaserScanConstPtr>  m_lidar_2d_sh;
-    mrs_lib::SubscribeHandlerPtr<sensor_msgs::RangeConstPtr>      m_lidar_1d_down_sh;
-    mrs_lib::SubscribeHandlerPtr<sensor_msgs::RangeConstPtr>      m_lidar_1d_up_sh;
-    ros::Publisher                                                m_obstacles_pub;
-    ros::Publisher                                                m_processed_depthmap_pub;
-    ros::Publisher                                                m_depthmap_hist_pub;
-    ros::Timer                                                    m_main_loop_timer;
-    std::string                                                   m_node_name;
+    mrs_lib::SubscribeHandlerPtr<sensor_msgs::LaserScanConstPtr> m_lidar_2d_sh;
+    mrs_lib::SubscribeHandlerPtr<sensor_msgs::RangeConstPtr> m_lidar_1d_down_sh;
+    mrs_lib::SubscribeHandlerPtr<sensor_msgs::RangeConstPtr> m_lidar_1d_up_sh;
+    ros::Publisher m_obstacles_pub;
+    ros::Publisher m_processed_depthmap_pub;
+    ros::Publisher m_depthmap_hist_pub;
+    ros::Timer m_main_loop_timer;
+    std::string m_node_name;
     //}
 
   private:
@@ -364,16 +406,16 @@ namespace mrs_bumper
     // --------------------------------------------------------------
 
     /* Misc. member variables //{ */
-    cv::Mat  m_mask_im;
+    cv::Mat m_mask_im;
     uint32_t m_n_horizontal_sectors;
     uint32_t m_bottom_sector_idx;
     uint32_t m_top_sector_idx;
     using angle_range_t = std::pair<double, double>;
-    std::vector<angle_range_t>                  m_horizontal_sector_ranges;
+    std::vector<angle_range_t> m_horizontal_sector_ranges;
     std::vector<boost::circular_buffer<double>> m_sector_filters;
-    uint32_t                                    m_n_total_sectors;
-    double                                      m_vertical_fov;
-    bool                                        m_sectors_initialized;
+    uint32_t m_n_total_sectors;
+    double m_vertical_fov;
+    bool m_sectors_initialized;
     //}
 
   private:
@@ -383,22 +425,25 @@ namespace mrs_bumper
 
     using hist_t = std::vector<float>;
     /* calculate_histogram() method //{ */
-    hist_t calculate_histogram(const cv::Mat& img, const int n_bins, const double bin_max, const cv::Mat& mask) {
+    hist_t calculate_histogram(const cv::Mat& img, const int n_bins, const double bin_max, const cv::Mat& mask)
+    {
       assert(((img.type() & CV_MAT_DEPTH_MASK) == CV_16U) || ((img.type() & CV_MAT_DEPTH_MASK) == CV_16S));
-      int          histSize[] = {n_bins};
-      float        range[]    = {0, (float)bin_max};
-      const float* ranges[]   = {range};
-      int          channels[] = {0};
-      cv::MatND    hist;
+      int histSize[] = {n_bins};
+      float range[] = {0, (float)bin_max};
+      const float* ranges[] = {range};
+      int channels[] = {0};
+      cv::MatND hist;
       calcHist(&img, 1, channels, mask, hist, 1, histSize, ranges);
       return hist;
     }
     //}
 
     /* find_histogram_quantile() method //{ */
-    int find_histogram_quantile(const hist_t& hist, const double quantile_area) {
+    int find_histogram_quantile(const hist_t& hist, const double quantile_area)
+    {
       double cur_area = 0;
-      for (unsigned it = 0; it < hist.size(); it++) {
+      for (unsigned it = 0; it < hist.size(); it++)
+      {
         cur_area += hist[it];
         if (cur_area > quantile_area)
           return it;
@@ -408,7 +453,8 @@ namespace mrs_bumper
     //}
 
     /* update_filter_sizes() method //{ */
-    void update_filter_sizes() {
+    void update_filter_sizes()
+    {
       const boost::circular_buffer<double> init_bfr(m_median_filter_size, mrs_msgs::ObstacleSectors::OBSTACLE_UNKNOWN);
       m_sector_filters.resize(m_n_total_sectors, init_bfr);
       for (auto& fil : m_sector_filters)
@@ -417,17 +463,19 @@ namespace mrs_bumper
     //}
 
     /* get_horizontal_sector_angle_interval() method //{ */
-    angle_range_t get_horizontal_sector_angle_interval(unsigned sector_it) {
+    angle_range_t get_horizontal_sector_angle_interval(unsigned sector_it)
+    {
       assert(sector_it < m_n_horizontal_sectors);
-      const double angle_step  = 2.0 * M_PI / m_n_horizontal_sectors;
+      const double angle_step = 2.0 * M_PI / m_n_horizontal_sectors;
       const double angle_start = sector_it * angle_step - angle_step / 2.0;
-      const double angle_end   = angle_start + angle_step + angle_step / 2.0;
+      const double angle_end = angle_start + angle_step + angle_step / 2.0;
       return {angle_start, angle_end};
     }
     //}
 
     /* initialize_ranges() method //{ */
-    std::vector<angle_range_t> initialize_ranges(uint32_t m_n_horizontal_sectors) {
+    std::vector<angle_range_t> initialize_ranges(uint32_t m_n_horizontal_sectors)
+    {
       std::vector<angle_range_t> ret;
       ret.reserve(m_n_horizontal_sectors);
       for (unsigned sector_it = 0; sector_it < m_n_horizontal_sectors; sector_it++)
@@ -437,19 +485,23 @@ namespace mrs_bumper
     //}
 
     /* angle_in_range() method //{ */
-    bool angle_in_range(double angle, const angle_range_t& angle_range) {
+    bool angle_in_range(double angle, const angle_range_t& angle_range)
+    {
       return angle > angle_range.first && angle < angle_range.second;
     }
     //}
 
     /* find_obstacles_in_horizontal_sectors() method //{ */
     using scan_cit_t = sensor_msgs::LaserScan::_ranges_type::const_iterator;
-    std::vector<double> find_obstacles_in_horizontal_sectors(const sensor_msgs::LaserScan& scan_msg) {
+    std::vector<double> find_obstacles_in_horizontal_sectors(const sensor_msgs::LaserScan& scan_msg)
+    {
       std::vector<double> ret;
       ret.reserve(m_n_horizontal_sectors);
-      for (const auto& cur_angle_range : m_horizontal_sector_ranges) {
+      for (const auto& cur_angle_range : m_horizontal_sector_ranges)
+      {
         double min_range = std::numeric_limits<double>::max();
-        for (unsigned ray_it = 0; ray_it < scan_msg.ranges.size(); ray_it++) {
+        for (unsigned ray_it = 0; ray_it < scan_msg.ranges.size(); ray_it++)
+        {
           const double ray_range = scan_msg.ranges.at(ray_it);
           const double ray_angle = scan_msg.angle_min + ray_it * scan_msg.angle_increment;
           if (ray_range < min_range && angle_in_range(ray_angle, cur_angle_range))
@@ -467,16 +519,19 @@ namespace mrs_bumper
     // finds the smallest unused value in *buf*, which is greater of equal to *ge_to*
     // updating the *used* variable to indicate which element was used
     template <typename T>
-    static T find_unused_min_ge(const boost::circular_buffer<T>& buf, const T ge_to, std::vector<int>& used) {
-      T   ret     = std::numeric_limits<T>::max();
+    static T find_unused_min_ge(const boost::circular_buffer<T>& buf, const T ge_to, std::vector<int>& used)
+    {
+      T ret = std::numeric_limits<T>::max();
       int used_it = -1;
-      for (unsigned it = 0; it < buf.size(); it++) {
+      for (unsigned it = 0; it < buf.size(); it++)
+      {
         int& el_used = used.at(it);
         if (el_used)
           continue;
         const T& val = buf.at(it);
-        if (val < ret && val >= ge_to) {
-          ret     = val;
+        if (val < ret && val >= ge_to)
+        {
+          ret = val;
           used_it = it;
         }
       }
@@ -488,17 +543,19 @@ namespace mrs_bumper
 
     /* get_median() method //{ */
     template <typename T>
-    static T get_median(const boost::circular_buffer<T>& filter) {
-      const auto       len      = filter.size();
-      const bool       even_len = filter.size() % 2 == 0;
-      T                prev_min = std::numeric_limits<T>::lowest();
+    static T get_median(const boost::circular_buffer<T>& filter)
+    {
+      const auto len = filter.size();
+      const bool even_len = filter.size() % 2 == 0;
+      T prev_min = std::numeric_limits<T>::lowest();
       std::vector<int> used(len, 0);
       for (unsigned it = 0; it < len / 2; it++)
         prev_min = find_unused_min_ge(filter, prev_min, used);
       T median = prev_min;
-      if (even_len) {
+      if (even_len)
+      {
         T median2 = find_unused_min_ge(filter, prev_min, used);
-        median    = (median + median2) / T(2);
+        median = (median + median2) / T(2);
       }
       if (std::isinf(median))
         ROS_WARN("[Bumper]: median is inf...");
@@ -508,12 +565,14 @@ namespace mrs_bumper
 
     /* filter_sectors() method //{ */
     template <typename T>
-    std::vector<T> filter_sectors(const std::vector<T>& sectors) {
+    std::vector<T> filter_sectors(const std::vector<T>& sectors)
+    {
       assert(sectors.size() == m_sector_filters.size());
       std::vector<T> ret;
       ret.reserve(sectors.size());
-      for (unsigned it = 0; it < sectors.size(); it++) {
-        const T                    sec = sectors.at(it);
+      for (unsigned it = 0; it < sectors.size(); it++)
+      {
+        const T sec = sectors.at(it);
         boost::circular_buffer<T>& fil = m_sector_filters.at(it);
         fil.push_back(sec);
         ret.push_back(get_median(fil));
