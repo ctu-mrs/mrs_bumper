@@ -16,6 +16,7 @@
   <depend>dynamic_reconfigure</depend>
   <depend>mrs_lib</depend>
   <depend>nodelet</depend>
+  <depend>mrs_msgs</depend>
 
   <exec_depend>message_runtime</exec_depend>
 
