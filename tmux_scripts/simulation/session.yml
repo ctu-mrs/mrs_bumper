@@ -39,7 +39,7 @@ windows:
       layout: even-vertical
       panes:
         - waitForOdometry; rosrun tf2_ros static_transform_publisher 0 0 0 0 0 0 fcu_uav1 fcu_uav1_horizontal
-        - waitForOdometry; roslaunch mrs_bumper rviz.launch
+        - waitForOdometry; roslaunch mrs_bumper rviz_uav1.launch
   - joystic:
       layout: even-vertical
       panes:
