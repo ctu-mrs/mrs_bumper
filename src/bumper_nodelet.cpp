@@ -214,10 +214,12 @@ namespace mrs_bumper
         if (m_depthmap_sh->new_data() && m_depth_cinfo_sh->has_data())
         {
           cv_bridge::CvImagePtr source_msg = cv_bridge::toCvCopy(m_depthmap_sh->get_data(), std::string("16UC1"));
-          const double obstacle_dist = find_obstacles_in_depthmap(source_msg) + m_depth_camera_offset;
+          double obstacle_dist = find_obstacles_in_depthmap(source_msg);
 
           // check if an obstacle was detected (*obstacle_sure*)
           bool obstacle_sure = !value_is_unknown(obstacle_dist);
+          if (obstacle_sure)
+            obstacle_dist += m_depth_camera_offset;
           auto& cur_value = obst_msg.sectors.at(0);
           auto& cur_sensor = obst_msg.sector_sensors.at(0);
           // If the previous obstacle information in this sector is unknown or a closer
