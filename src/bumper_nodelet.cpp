@@ -216,11 +216,12 @@ namespace mrs_bumper
           double obstacle_dist = find_obstacles_in_depthmap(source_msg);
 
           // check if an obstacle was detected (*obstacle_sure*)
-          bool obstacle_sure = value_is_unknown(obstacle_dist);
+          bool obstacle_sure = !value_is_unknown(obstacle_dist);
           auto& cur_value = obst_msg.sectors.at(0);
           auto& cur_sensor = obst_msg.sector_sensors.at(0);
           // If the previous obstacle information in this sector is unknown or a closer
           // obstacle was detected by this sensor, update the information.
+          // TODO: fix the logic here
           if (value_is_unknown(cur_value) || (obstacle_sure && obstacle_dist < cur_value))
           {
             cur_value = obstacle_dist;
@@ -243,7 +244,7 @@ namespace mrs_bumper
             const double obstacle_dist = obstacle_distances.at(sector_it);
 
             // check if an obstacle was detected (*obstacle_sure*)
-            bool obstacle_sure = value_is_unknown(obstacle_dist);
+            bool obstacle_sure = !value_is_unknown(obstacle_dist);
             auto& cur_value = obst_msg.sectors.at(sector_it);
             auto& cur_sensor = obst_msg.sector_sensors.at(sector_it);
             // If the previous obstacle information in this sector is unknown or a closer
@@ -265,18 +266,18 @@ namespace mrs_bumper
           // get the current obstacle distance
           sensor_msgs::Range source_msg = *m_lidar_1d_down_sh->get_data();
           double obstacle_dist = source_msg.range;
-          if (source_msg.range <= source_msg.min_range && source_msg.range >= source_msg.max_range)
+          if (obstacle_dist <= source_msg.min_range || obstacle_dist >= source_msg.max_range)
             obstacle_dist = ObstacleSectors::OBSTACLE_NOT_DETECTED;
 
           // check if an obstacle was detected (*obstacle_sure*)
-          bool obstacle_sure = value_is_unknown(obstacle_dist);
+          bool obstacle_sure = !value_is_unknown(obstacle_dist);
           auto& cur_value = obst_msg.sectors.at(m_bottom_sector_idx);
           auto& cur_sensor = obst_msg.sector_sensors.at(m_bottom_sector_idx);
           // If the previous obstacle information in this sector is unknown or a closer
           // obstacle was detected by this sensor, update the information.
           if (value_is_unknown(cur_value) || (obstacle_sure && obstacle_dist < cur_value))
           {
-            cur_value = source_msg.range;
+            cur_value = obstacle_dist;
             cur_sensor = ObstacleSectors::SENSOR_LIDAR_1D;
           }
           if (obst_msg.header.stamp > source_msg.header.stamp)
@@ -290,18 +291,18 @@ namespace mrs_bumper
           // get the current obstacle distance
           sensor_msgs::Range source_msg = *m_lidar_1d_up_sh->get_data();
           double obstacle_dist = source_msg.range;
-          if (source_msg.range <= source_msg.min_range && source_msg.range >= source_msg.max_range)
+          if (obstacle_dist <= source_msg.min_range || obstacle_dist >= source_msg.max_range)
             obstacle_dist = ObstacleSectors::OBSTACLE_NOT_DETECTED;
 
           // check if an obstacle was detected (*obstacle_sure*)
-          bool obstacle_sure = value_is_unknown(obstacle_dist);
+          bool obstacle_sure = !value_is_unknown(obstacle_dist);
           auto& cur_value = obst_msg.sectors.at(m_top_sector_idx);
           auto& cur_sensor = obst_msg.sector_sensors.at(m_top_sector_idx);
           // If the previous obstacle information in this sector is unknown or a closer
           // obstacle was detected by this sensor, update the information.
           if (value_is_unknown(cur_value) || (obstacle_sure && obstacle_dist < cur_value))
           {
-            cur_value = source_msg.range;
+            cur_value = obstacle_dist;
             cur_sensor = ObstacleSectors::SENSOR_LIDAR_1D;
           }
           if (obst_msg.header.stamp > source_msg.header.stamp)
@@ -583,7 +584,7 @@ namespace mrs_bumper
           used_it = it;
         }
       }
-      if (used_it > 0)
+      if (used_it >= 0)
         used.at(used_it) = 1;
       return ret;
     }
@@ -593,18 +594,19 @@ namespace mrs_bumper
     template <typename T>
     static T get_median(const boost::circular_buffer<T>& filter)
     {
-      const auto len = filter.size();
-      const bool even_len = filter.size() % 2 == 0;
-      T prev_min = std::numeric_limits<T>::lowest();
+      const unsigned len = filter.size();
+      /* const bool even_len = filter.size() % 2 == 0; */
+      T prev_min = -std::numeric_limits<T>::infinity();
       std::vector<int> used(len, 0);
-      for (unsigned it = 0; it < len / 2; it++)
+      const unsigned it_max = std::max(len / 2u, 1u);
+      for (unsigned it = 0; it < it_max; it++)
         prev_min = find_unused_min_ge(filter, prev_min, used);
       T median = prev_min;
-      if (even_len)
-      {
-        T median2 = find_unused_min_ge(filter, prev_min, used);
-        median = (median + median2) / T(2);
-      }
+      /* if (even_len) */
+      /* { */
+      /*   T median2 = find_unused_min_ge(filter, prev_min, used); */
+      /*   median = (median + median2) / T(2); */
+      /* } */
       if (std::isinf(median))
         ROS_WARN("[Bumper]: median is inf...");
       return median;
@@ -612,6 +614,18 @@ namespace mrs_bumper
     //}
 
     /* filter_sectors() method //{ */
+    template <typename T>
+    void print_median_buffer(boost::circular_buffer<T> fil, T median, unsigned n)
+    {
+      std::cout << "Buffer #" << n << ": " << median << std::endl;
+      for (unsigned it = 0; it < fil.size(); it++)
+        std::cout << it << "\t";
+      std::cout << std::endl;
+      for (const auto& v : fil)
+        std::cout << std::fixed << std::setprecision(3) << v << "\t";
+      std::cout << std::endl;
+    }
+
     template <typename T>
     std::vector<T> filter_sectors(const std::vector<T>& sectors)
     {
@@ -621,9 +635,13 @@ namespace mrs_bumper
       for (unsigned it = 0; it < sectors.size(); it++)
       {
         const T sec = sectors.at(it);
-        boost::circular_buffer<T>& fil = m_sector_filters.at(it);
+        auto& fil = m_sector_filters.at(it);
         fil.push_back(sec);
-        ret.push_back(get_median(fil));
+        const auto median = get_median(fil);
+        ret.push_back(median);
+#ifdef DEBUG_MEDIAN_FILTER
+        print_median_buffer(fil, median, it);
+#endif
       }
       return ret;
     }
