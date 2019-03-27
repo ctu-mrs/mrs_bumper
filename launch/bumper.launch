@@ -14,7 +14,7 @@
   <arg unless="$(arg simulation)" name="depth_cinfo_topic" value="/$(arg uav_name)/rs_d435/aligned_depth_to_color/camera_info"/>
   <arg     if="$(arg simulation)" name="depth_cinfo_topic" value="/$(arg uav_name)/realsense/camera/depth/camera_info"/>
   <arg unless="$(arg simulation)" name="lidar_2d_topic" value="/$(arg uav_name)/rplidar/scan"/>
-  <arg     if="$(arg simulation)" name="lidar_2d_topic" value="/$(arg uav_name)/scanse_sweep/range"/>
+  <arg     if="$(arg simulation)" name="lidar_2d_topic" value="/$(arg uav_name)/rplidar/scan"/>
   <arg unless="$(arg simulation)" name="lidar_1d_down_topic" value="/$(arg uav_name)/garmin/range"/>
   <arg     if="$(arg simulation)" name="lidar_1d_down_topic" value="/$(arg uav_name)/garmin/range"/>
   <arg unless="$(arg simulation)" name="lidar_1d_up_topic" value="/$(arg uav_name)/garmin/range_up"/>

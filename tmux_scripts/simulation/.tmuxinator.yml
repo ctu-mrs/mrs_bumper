@@ -9,7 +9,7 @@ windows:
   - spawn:
       layout: even-vertical
       panes:
-        - waitForSimulation; spawn 1 --run --delete --enable-rangefinder --enable-rangefinder-up --enable-ground-truth --enable-realsense-front --enable-realistic-realsense --enable-scanse
+        - waitForSimulation; spawn 1 --run --delete --enable-rangefinder --enable-rangefinder-up --enable-ground-truth --enable-realsense-front --enable-realistic-realsense --enable-rplidar
   - odometry:
       layout: even-vertical
       panes:
@@ -18,8 +18,7 @@ windows:
       layout: even-vertical
       panes:
         #{ takeoff uav1
-        - '
-          waitForControl;
+        - 'waitForControl;
           rosservice call /$UAV_NAME/mavros/cmd/arming 1;
           rosservice call /$UAV_NAME/mavros/set_mode 0 offboard;
           rosservice call /$UAV_NAME/control_manager/motors 1;
@@ -27,14 +26,14 @@ windows:
           rosservice call /$UAV_NAME/constraint_manager/set_constraints darpa;
           sleep 5;
           rosservice call /$UAV_NAME/control_manager/goto "goal: [-3.5, 3.5, 1.0, -1.57]";
-          history -s rosservice call /$UAV_NAME/control_manager/goto "\"goal: [-5.0, 0.0, 2.0, 0.0]\"";
+          history -s rosservice call /$UAV_NAME/control_manager/goto "\"goal: [-5.0, 0.0, 2.0, 0.0]\""
           '
         #}
   - mrs_bumper:
       layout: even-vertical
       panes:
-        - waitForControl; roslaunch mrs_bumper bumper.launch
-        - waitForControl; rostopic echo /uav1/bumper/obstacle_sectors
+        - waitForRos; roslaunch mrs_bumper bumper.launch
+        - waitForRos; rostopic echo /uav1/bumper/obstacle_sectors
   - rviz:
       layout: even-vertical
       panes:
@@ -48,3 +47,4 @@ windows:
       layout: even-vertical
       panes:
         - waitForOdometry; gz camera -c gzclient_camera -f uav1; history -s gz camera -c gzclient_camera -f uav1
+        - waitForControl; ~/.i3/layout_manager.sh simulation
