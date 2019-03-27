@@ -584,7 +584,7 @@ namespace mrs_bumper
           used_it = it;
         }
       }
-      if (used_it > 0)
+      if (used_it >= 0)
         used.at(used_it) = 1;
       return ret;
     }
@@ -598,7 +598,8 @@ namespace mrs_bumper
       /* const bool even_len = filter.size() % 2 == 0; */
       T prev_min = -std::numeric_limits<T>::infinity();
       std::vector<int> used(len, 0);
-      for (unsigned it = 0; it < std::max(len / 2u, 1u); it++)
+      const unsigned it_max = std::max(len / 2u, 1u);
+      for (unsigned it = 0; it < it_max; it++)
         prev_min = find_unused_min_ge(filter, prev_min, used);
       T median = prev_min;
       /* if (even_len) */
@@ -614,6 +615,18 @@ namespace mrs_bumper
 
     /* filter_sectors() method //{ */
     template <typename T>
+    void print_median_buffer(boost::circular_buffer<T> fil, T median, unsigned n)
+    {
+      std::cout << "Buffer #" << n << ": " << median << std::endl;
+      for (unsigned it = 0; it < fil.size(); it++)
+        std::cout << it << "\t";
+      std::cout << std::endl;
+      for (const auto& v : fil)
+        std::cout << std::fixed << std::setprecision(3) << v << "\t";
+      std::cout << std::endl;
+    }
+
+    template <typename T>
     std::vector<T> filter_sectors(const std::vector<T>& sectors)
     {
       assert(sectors.size() == m_sector_filters.size());
@@ -622,9 +635,13 @@ namespace mrs_bumper
       for (unsigned it = 0; it < sectors.size(); it++)
       {
         const T sec = sectors.at(it);
-        boost::circular_buffer<T>& fil = m_sector_filters.at(it);
+        auto& fil = m_sector_filters.at(it);
         fil.push_back(sec);
-        ret.push_back(get_median(fil));
+        const auto median = get_median(fil);
+        ret.push_back(median);
+#ifdef DEBUG_MEDIAN_FILTER
+        print_median_buffer(fil, median, it);
+#endif
       }
       return ret;
     }
