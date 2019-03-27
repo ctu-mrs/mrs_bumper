@@ -216,11 +216,12 @@ namespace mrs_bumper
           double obstacle_dist = find_obstacles_in_depthmap(source_msg);
 
           // check if an obstacle was detected (*obstacle_sure*)
-          bool obstacle_sure = value_is_unknown(obstacle_dist);
+          bool obstacle_sure = !value_is_unknown(obstacle_dist);
           auto& cur_value = obst_msg.sectors.at(0);
           auto& cur_sensor = obst_msg.sector_sensors.at(0);
           // If the previous obstacle information in this sector is unknown or a closer
           // obstacle was detected by this sensor, update the information.
+          // TODO: fix the logic here
           if (value_is_unknown(cur_value) || (obstacle_sure && obstacle_dist < cur_value))
           {
             cur_value = obstacle_dist;
@@ -243,7 +244,7 @@ namespace mrs_bumper
             const double obstacle_dist = obstacle_distances.at(sector_it);
 
             // check if an obstacle was detected (*obstacle_sure*)
-            bool obstacle_sure = value_is_unknown(obstacle_dist);
+            bool obstacle_sure = !value_is_unknown(obstacle_dist);
             auto& cur_value = obst_msg.sectors.at(sector_it);
             auto& cur_sensor = obst_msg.sector_sensors.at(sector_it);
             // If the previous obstacle information in this sector is unknown or a closer
@@ -269,14 +270,14 @@ namespace mrs_bumper
             obstacle_dist = ObstacleSectors::OBSTACLE_NOT_DETECTED;
 
           // check if an obstacle was detected (*obstacle_sure*)
-          bool obstacle_sure = value_is_unknown(obstacle_dist);
+          bool obstacle_sure = !value_is_unknown(obstacle_dist);
           auto& cur_value = obst_msg.sectors.at(m_bottom_sector_idx);
           auto& cur_sensor = obst_msg.sector_sensors.at(m_bottom_sector_idx);
           // If the previous obstacle information in this sector is unknown or a closer
           // obstacle was detected by this sensor, update the information.
           if (value_is_unknown(cur_value) || (obstacle_sure && obstacle_dist < cur_value))
           {
-            cur_value = source_msg.range;
+            cur_value = obstacle_dist;
             cur_sensor = ObstacleSectors::SENSOR_LIDAR_1D;
           }
           if (obst_msg.header.stamp > source_msg.header.stamp)
@@ -294,14 +295,14 @@ namespace mrs_bumper
             obstacle_dist = ObstacleSectors::OBSTACLE_NOT_DETECTED;
 
           // check if an obstacle was detected (*obstacle_sure*)
-          bool obstacle_sure = value_is_unknown(obstacle_dist);
+          bool obstacle_sure = !value_is_unknown(obstacle_dist);
           auto& cur_value = obst_msg.sectors.at(m_top_sector_idx);
           auto& cur_sensor = obst_msg.sector_sensors.at(m_top_sector_idx);
           // If the previous obstacle information in this sector is unknown or a closer
           // obstacle was detected by this sensor, update the information.
           if (value_is_unknown(cur_value) || (obstacle_sure && obstacle_dist < cur_value))
           {
-            cur_value = source_msg.range;
+            cur_value = obstacle_dist;
             cur_sensor = ObstacleSectors::SENSOR_LIDAR_1D;
           }
           if (obst_msg.header.stamp > source_msg.header.stamp)
@@ -593,18 +594,18 @@ namespace mrs_bumper
     template <typename T>
     static T get_median(const boost::circular_buffer<T>& filter)
     {
-      const auto len = filter.size();
-      const bool even_len = filter.size() % 2 == 0;
-      T prev_min = std::numeric_limits<T>::lowest();
+      const unsigned len = filter.size();
+      /* const bool even_len = filter.size() % 2 == 0; */
+      T prev_min = -std::numeric_limits<T>::infinity();
       std::vector<int> used(len, 0);
-      for (unsigned it = 0; it < len / 2; it++)
+      for (unsigned it = 0; it < std::max(len / 2u, 1u); it++)
         prev_min = find_unused_min_ge(filter, prev_min, used);
       T median = prev_min;
-      if (even_len)
-      {
-        T median2 = find_unused_min_ge(filter, prev_min, used);
-        median = (median + median2) / T(2);
-      }
+      /* if (even_len) */
+      /* { */
+      /*   T median2 = find_unused_min_ge(filter, prev_min, used); */
+      /*   median = (median + median2) / T(2); */
+      /* } */
       if (std::isinf(median))
         ROS_WARN("[Bumper]: median is inf...");
       return median;
