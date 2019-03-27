@@ -1,7 +1,7 @@
 roi:
   centering: false
   height: 480
-  y_offset: 0
+  y_offset: 240
 
 # this value is used in the input depth map to indicate that
 # depth of the specific pixel is unknown

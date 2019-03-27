@@ -513,13 +513,22 @@ namespace mrs_bumper
     }
     //}
 
+    double normalize_angle(double angle)
+    {
+      if (angle < 0.0)
+        angle += 2.0*M_PI;
+      else if (angle >= 2.0*M_PI)
+        angle -= 2.0*M_PI;
+      return angle;
+    }
+
     /* get_horizontal_sector_angle_interval() method //{ */
     angle_range_t get_horizontal_sector_angle_interval(unsigned sector_it)
     {
-      assert(sector_it < m_n_horizontal_sectors);
+      assert(sector_it > 0 && sector_it < m_n_horizontal_sectors);
       const double angle_step = 2.0 * M_PI / m_n_horizontal_sectors;
-      const double angle_start = sector_it * angle_step - angle_step / 2.0;
-      const double angle_end = angle_start + angle_step;
+      const double angle_start = normalize_angle(sector_it * angle_step - angle_step / 2.0);
+      const double angle_end = normalize_angle(angle_start + angle_step);
       return {angle_start, angle_end};
     }
     //}
@@ -538,11 +547,12 @@ namespace mrs_bumper
     /* angle_in_range() method //{ */
     bool angle_in_range(double angle, const angle_range_t& angle_range)
     {
-      if (angle < 0.0)
-        angle += 2.0*M_PI;
-      else if (angle >= 2.0*M_PI)
-        angle -= 2.0*M_PI;
-      return angle > angle_range.first && angle < angle_range.second;
+      angle = normalize_angle(angle);
+      bool in_range = angle > angle_range.first && angle < angle_range.second;
+      // corner-case for the first sector (which would have angle_range.first < 0.0, but it is normalized as angle_range.first + 2.0*M_PI)
+      if (angle_range.first > angle_range.second)
+        in_range = angle < angle_range.second || angle > angle_range.first;
+      return in_range;
     }
     //}
 
