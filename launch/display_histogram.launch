@@ -10,7 +10,7 @@
     
     <node pkg="mrs_bumper" type="histogram_displayer" name="histogram_displayer" output="screen" launch-prefix="$(arg launch_prefix)">
       
-      <remap from="~histogram" to="mrs_bumper/depthmap_histogram" />
+      <remap from="~histogram" to="bumper/depthmap_histogram" />
 
     </node>
   
