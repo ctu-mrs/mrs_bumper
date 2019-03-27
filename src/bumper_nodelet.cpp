@@ -266,7 +266,7 @@ namespace mrs_bumper
           // get the current obstacle distance
           sensor_msgs::Range source_msg = *m_lidar_1d_down_sh->get_data();
           double obstacle_dist = source_msg.range;
-          if (source_msg.range <= source_msg.min_range && source_msg.range >= source_msg.max_range)
+          if (obstacle_dist <= source_msg.min_range || obstacle_dist >= source_msg.max_range)
             obstacle_dist = ObstacleSectors::OBSTACLE_NOT_DETECTED;
 
           // check if an obstacle was detected (*obstacle_sure*)
@@ -291,7 +291,7 @@ namespace mrs_bumper
           // get the current obstacle distance
           sensor_msgs::Range source_msg = *m_lidar_1d_up_sh->get_data();
           double obstacle_dist = source_msg.range;
-          if (source_msg.range <= source_msg.min_range && source_msg.range >= source_msg.max_range)
+          if (obstacle_dist <= source_msg.min_range || obstacle_dist >= source_msg.max_range)
             obstacle_dist = ObstacleSectors::OBSTACLE_NOT_DETECTED;
 
           // check if an obstacle was detected (*obstacle_sure*)
