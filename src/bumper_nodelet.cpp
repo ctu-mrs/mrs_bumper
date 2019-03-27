@@ -519,7 +519,7 @@ namespace mrs_bumper
       assert(sector_it < m_n_horizontal_sectors);
       const double angle_step = 2.0 * M_PI / m_n_horizontal_sectors;
       const double angle_start = sector_it * angle_step - angle_step / 2.0;
-      const double angle_end = angle_start + angle_step + angle_step / 2.0;
+      const double angle_end = angle_start + angle_step;
       return {angle_start, angle_end};
     }
     //}
@@ -538,6 +538,10 @@ namespace mrs_bumper
     /* angle_in_range() method //{ */
     bool angle_in_range(double angle, const angle_range_t& angle_range)
     {
+      if (angle < 0.0)
+        angle += 2.0*M_PI;
+      else if (angle >= 2.0*M_PI)
+        angle -= 2.0*M_PI;
       return angle > angle_range.first && angle < angle_range.second;
     }
     //}
