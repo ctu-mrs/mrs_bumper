@@ -6,3 +6,15 @@ roi:
 unknown_pixel_value: 0
 # size of the median filter, used for each sector
 median_filter_size: 10
+# how often data from sensors are evaluated and the bumper topic published
+update_rate: 10
+
+# This is the offset of the depth camera to compensate its shift from the UAV center.
+# Its value is added to the obstacle distance, measured by the camera.
+depth_camera_offset: 0.3 # meters
+# maximal considered detection depth of the depth camera
+max_depth: 10.0 # meters
+# number of bins of the depthmap histogram
+histogram_n_bins: 100
+# minimal number of pixels with depth smaller or equal than the resulting obstacle distance
+histogram_quantile_area: 200

@@ -52,6 +52,7 @@ namespace mrs_bumper
       pl.load_param("histogram_n_bins", m_hist_n_bins, 1000);
       pl.load_param("histogram_quantile_area", m_hist_quantile_area, 200);
       pl.load_param("max_depth", m_max_depth);
+      pl.load_param("depth_camera_offset", m_depth_camera_offset);
       std::string path_to_mask = pl.load_param2<std::string>("path_to_mask", std::string());
 
       // LOAD DYNAMIC PARAMETERS
@@ -213,7 +214,7 @@ namespace mrs_bumper
         if (m_depthmap_sh->new_data() && m_depth_cinfo_sh->has_data())
         {
           cv_bridge::CvImagePtr source_msg = cv_bridge::toCvCopy(m_depthmap_sh->get_data(), std::string("16UC1"));
-          double obstacle_dist = find_obstacles_in_depthmap(source_msg);
+          const double obstacle_dist = find_obstacles_in_depthmap(source_msg) + m_depth_camera_offset;
 
           // check if an obstacle was detected (*obstacle_sure*)
           bool obstacle_sure = !value_is_unknown(obstacle_dist);
@@ -334,6 +335,7 @@ namespace mrs_bumper
     int m_hist_n_bins;
     int m_hist_quantile_area;
     double m_max_depth;
+    double m_depth_camera_offset;
     //}
 
     /* ROS related variables (subscribers, timers etc.) //{ */
