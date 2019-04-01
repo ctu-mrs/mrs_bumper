@@ -29,6 +29,7 @@ namespace mrs_bumper
   class Bumper : public nodelet::Nodelet
   {
   public:
+
     /* onInit() method //{ */
     void onInit()
     {
@@ -53,7 +54,10 @@ namespace mrs_bumper
       pl.load_param("histogram_quantile_area", m_hist_quantile_area, 200);
       pl.load_param("max_depth", m_max_depth);
       pl.load_param("depth_camera_offset", m_depth_camera_offset);
-      std::string path_to_mask = pl.load_param2<std::string>("path_to_mask", std::string());
+      const double fallback_timeout = pl.load_param2<double>("fallback_timeout", 0.0);
+      pl.load_param("fallback_n_horizontal_sectors", m_fallback_n_horizontal_sectors, 0);
+      pl.load_param("fallback_vertical_fov", m_fallback_vertical_fov, 0.0);
+      const std::string path_to_mask = pl.load_param2<std::string>("path_to_mask", std::string());
 
       // LOAD DYNAMIC PARAMETERS
       // CHECK LOADING STATUS
@@ -105,6 +109,20 @@ namespace mrs_bumper
         }
       }
 
+      if (fallback_timeout != 0.0)
+      {
+        if (m_fallback_n_horizontal_sectors == 0 || m_fallback_vertical_fov == 0.0)
+        {
+          ROS_ERROR(
+              "[%s]: Fallback timeout was specified, but fallback number of horizontal sectors (%d) or fallback vertical field of view (%.2f) is invalid (both "
+              "have to be > 0). Ending node.",
+              m_node_name.c_str(), m_fallback_n_horizontal_sectors, m_fallback_vertical_fov);
+        }
+      }
+      m_fallback_timeout = ros::Duration(fallback_timeout);
+
+      m_roi_initialized = false;
+      m_first_message_received = false;
       m_sectors_initialized = false;
       //}
 
@@ -117,61 +135,30 @@ namespace mrs_bumper
     /* main_loop() method //{ */
     void main_loop([[maybe_unused]] const ros::TimerEvent& evt)
     {
-
       /* Initialize number of horizontal sectors etc from camera info message //{ */
       if (!m_sectors_initialized && m_depth_cinfo_sh->new_data())
       {
         ROS_INFO("[Bumper]: processing camera info message");
 
         const auto cinfo = m_depth_cinfo_sh->get_data();
-        if (m_roi_centering)
-        {
-          if (m_roi.height == 0)
-            m_roi.height = cinfo->height;
-          if (m_roi.height > cinfo->height)
-          {
-            ROS_ERROR("[%s]: Desired ROI height (%d) is larger than image height (%d) - clamping!", m_node_name.c_str(), m_roi.height, cinfo->height);
-            m_roi.height = cinfo->height;
-          }
-
-          if (m_roi.width == 0)
-            m_roi.width = cinfo->width;
-          if (m_roi.width > cinfo->width)
-          {
-            ROS_ERROR("[%s]: Desired ROI width (%d) is larger than image width (%d) - clamping!", m_node_name.c_str(), m_roi.width, cinfo->width);
-            m_roi.width = cinfo->width;
-          }
-
-          m_roi.y_offset = (cinfo->height - m_roi.height) / 2;
-          m_roi.x_offset = (cinfo->width - m_roi.width) / 2;
-        }
-
-        if (m_roi.y_offset + m_roi.height > unsigned(cinfo->height) || m_roi.height == 0)
-          m_roi.height = std::clamp(int(cinfo->height - m_roi.y_offset), 0, int(cinfo->height));
-        if (m_roi.x_offset + m_roi.width > unsigned(cinfo->width) || m_roi.width == 0)
-          m_roi.width = std::clamp(int(cinfo->width - m_roi.x_offset), 0, int(cinfo->width));
+        initialize_roi(cinfo->width, cinfo->height);
 
         const double w = m_roi.width;
         const double h = m_roi.height;
         const double fx = cinfo->K[0];
         const double fy = cinfo->K[4];
         const double horizontal_fov = std::atan2(w / 2.0, fx) * 2.0;
-        const double vectical_fov = std::atan2(h / 2.0, fy) * 2.0;
-        m_n_horizontal_sectors = std::ceil(2.0 * M_PI / horizontal_fov);
-        m_bottom_sector_idx = m_n_horizontal_sectors;
-        m_top_sector_idx = m_n_horizontal_sectors + 1;
-        m_horizontal_sector_ranges = initialize_ranges(m_n_horizontal_sectors);
-        m_n_total_sectors = m_n_horizontal_sectors + 2;
-        m_vertical_fov = vectical_fov;
-        update_filter_sizes();
+        const double vertical_fov = std::atan2(h / 2.0, fy) * 2.0;
+        const int n_horizontal_sectors = std::ceil(2.0 * M_PI / horizontal_fov);
+        initialize_sectors(n_horizontal_sectors, vertical_fov);
 
         ROS_INFO("[Bumper]: Depth camera horizontal FOV: %.1fdeg", horizontal_fov / M_PI * 180.0);
-        ROS_INFO("[Bumper]: Depth camera vertical FOV: %.1fdeg", vectical_fov / M_PI * 180.0);
+        ROS_INFO("[Bumper]: Depth camera vertical FOV: %.1fdeg", vertical_fov / M_PI * 180.0);
         ROS_INFO("[Bumper]: Number of horizontal sectors: %d", m_n_horizontal_sectors);
-        m_sectors_initialized = true;
       }
+      //}
 
-      // apply possible changes from dynamic reconfigure
+      /* Apply possible changes from dynamic reconfigure //{ */
       if (m_median_filter_size != m_drmgr_ptr->config.median_filter_size)
       {
         if (m_drmgr_ptr->config.median_filter_size > 0)
@@ -199,6 +186,7 @@ namespace mrs_bumper
 
       if (m_sectors_initialized)
       {
+        /* process any new messages, publish new obstacles message //{ */
 
         /* Prepare the ObstacleSectors message to be published //{ */
         ObstacleSectors obst_msg;
@@ -214,6 +202,8 @@ namespace mrs_bumper
         if (m_depthmap_sh->new_data() && m_depth_cinfo_sh->has_data())
         {
           cv_bridge::CvImagePtr source_msg = cv_bridge::toCvCopy(m_depthmap_sh->get_data(), std::string("16UC1"));
+          if (!m_roi_initialized)
+            initialize_roi(source_msg->image.cols, source_msg->image.rows);
           double obstacle_dist = find_obstacles_in_depthmap(source_msg);
 
           // check if an obstacle was detected (*obstacle_sure*)
@@ -313,11 +303,52 @@ namespace mrs_bumper
         }
         //}
 
+        /* filter the obstacle distances //{ */
+
         obst_msg.sectors = filter_sectors(obst_msg.sectors);
+
+        //}
 
         /* Publish the ObstacleSectors message //{ */
         m_obstacles_pub.publish(obst_msg);
         //}
+
+        //}
+      } else
+      {
+        /* if we got a first sensor message, but still no cinfo, remember the stamp (for fallback timeout) //{ */
+
+        if (!m_first_message_received && m_depthmap_sh->has_data())
+        {
+          m_first_message_stamp = m_depthmap_sh->get_data()->header.stamp;
+          m_first_message_received = true;
+        }
+        if (!m_first_message_received && m_lidar_2d_sh->has_data())
+        {
+          m_first_message_stamp = m_lidar_2d_sh->get_data()->header.stamp;
+          m_first_message_received = true;
+        }
+        if (!m_first_message_received && m_lidar_1d_down_sh->has_data())
+        {
+          m_first_message_stamp = m_lidar_1d_down_sh->get_data()->header.stamp;
+          m_first_message_received = true;
+        }
+        if (!m_first_message_received && m_lidar_1d_up_sh->has_data())
+        {
+          m_first_message_stamp = m_lidar_1d_up_sh->get_data()->header.stamp;
+          m_first_message_received = true;
+        }
+
+        //}
+
+        const ros::Duration cinfo_delay = ros::Time::now() - m_first_message_stamp;
+        if (m_first_message_received && cinfo_delay >= m_fallback_timeout)
+        {
+          ROS_WARN("[%s]: No camera info message received after %.2f seconds, using fallback number of horizontal sectors: %d!", m_node_name.c_str(),
+                   cinfo_delay.toSec(), m_fallback_n_horizontal_sectors);
+          initialize_sectors(m_fallback_n_horizontal_sectors, m_fallback_vertical_fov);
+          m_sectors_initialized = true;
+        }
       }
     }
     //}
@@ -338,6 +369,10 @@ namespace mrs_bumper
     int m_hist_quantile_area;
     double m_max_depth;
     double m_depth_camera_offset;
+
+    ros::Duration m_fallback_timeout;
+    int m_fallback_n_horizontal_sectors;
+    double m_fallback_vertical_fov;
     //}
 
     /* ROS related variables (subscribers, timers etc.) //{ */
@@ -369,6 +404,9 @@ namespace mrs_bumper
     std::vector<boost::circular_buffer<double>> m_sector_filters;
     uint32_t m_n_total_sectors;
     double m_vertical_fov;
+    bool m_roi_initialized;
+    ros::Time m_first_message_stamp;
+    bool m_first_message_received;
     bool m_sectors_initialized;
     //}
 
@@ -381,6 +419,52 @@ namespace mrs_bumper
     bool value_is_unknown(ObstacleSectors::_sectors_type::value_type value)
     {
       return value == ObstacleSectors::OBSTACLE_NO_DATA || value == ObstacleSectors::OBSTACLE_NOT_DETECTED;
+    }
+    //}
+
+    /* initialize_roi() method //{ */
+    void initialize_roi(unsigned img_width, unsigned img_height)
+    {
+      if (m_roi_centering)
+      {
+        if (m_roi.height == 0)
+          m_roi.height = img_height;
+        if (m_roi.height > img_height)
+        {
+          ROS_ERROR("[%s]: Desired ROI height (%d) is larger than image height (%d) - clamping!", m_node_name.c_str(), m_roi.height, img_height);
+          m_roi.height = img_height;
+        }
+
+        if (m_roi.width == 0)
+          m_roi.width = img_width;
+        if (m_roi.width > img_width)
+        {
+          ROS_ERROR("[%s]: Desired ROI width (%d) is larger than image width (%d) - clamping!", m_node_name.c_str(), m_roi.width, img_width);
+          m_roi.width = img_width;
+        }
+
+        m_roi.y_offset = (img_height - m_roi.height) / 2;
+        m_roi.x_offset = (img_width - m_roi.width) / 2;
+      }
+      if (m_roi.y_offset + m_roi.height > unsigned(img_height) || m_roi.height == 0)
+        m_roi.height = std::clamp(int(img_height - m_roi.y_offset), 0, int(img_height));
+      if (m_roi.x_offset + m_roi.width > unsigned(img_width) || m_roi.width == 0)
+        m_roi.width = std::clamp(int(img_width), 0, int(img_width));
+      m_roi_initialized = true;
+    }
+    //}
+
+    /* initialize_sectors() method //{ */
+    void initialize_sectors(int n_horizontal_sectors, double vfov)
+    {
+      m_n_horizontal_sectors = n_horizontal_sectors;
+      m_bottom_sector_idx = n_horizontal_sectors;
+      m_top_sector_idx = n_horizontal_sectors + 1;
+      m_horizontal_sector_ranges = initialize_ranges(n_horizontal_sectors);
+      m_n_total_sectors = n_horizontal_sectors + 2;
+      m_vertical_fov = vfov;
+      update_filter_sizes();
+      m_sectors_initialized = true;
     }
     //}
 
@@ -515,14 +599,16 @@ namespace mrs_bumper
     }
     //}
 
+    /* normalize_angle() method //{ */
     double normalize_angle(double angle)
     {
       if (angle < 0.0)
-        angle += 2.0*M_PI;
-      else if (angle >= 2.0*M_PI)
-        angle -= 2.0*M_PI;
+        angle += 2.0 * M_PI;
+      else if (angle >= 2.0 * M_PI)
+        angle -= 2.0 * M_PI;
       return angle;
     }
+    //}
 
     /* get_horizontal_sector_angle_interval() method //{ */
     angle_range_t get_horizontal_sector_angle_interval(unsigned sector_it)
