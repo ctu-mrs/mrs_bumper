@@ -5,6 +5,8 @@
 #include <nodelet/nodelet.h>
 #include <sensor_msgs/LaserScan.h>
 #include <sensor_msgs/Range.h>
+#include <tf2_ros/transform_listener.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -88,6 +90,8 @@ namespace mrs_bumper
       m_obstacles_pub = nh.advertise<ObstacleSectors>("obstacle_sectors", 1);
       m_processed_depthmap_pub = nh.advertise<sensor_msgs::Image>("processed_depthmap", 1);
       m_depthmap_hist_pub = nh.advertise<Histogram>("depthmap_histogram", 1);
+
+      m_tf_listener_ptr = std::make_unique<tf2_ros::TransformListener>(m_tf_buffer);
       //}
 
       /* Initialize other varibles //{ */
@@ -124,6 +128,7 @@ namespace mrs_bumper
       m_roi_initialized = false;
       m_first_message_received = false;
       m_sectors_initialized = false;
+      m_lidar_2d_offset_initialized = false;
       //}
 
       m_main_loop_timer = nh.createTimer(ros::Rate(m_update_rate), &Bumper::main_loop, this);
@@ -136,9 +141,9 @@ namespace mrs_bumper
     void main_loop([[maybe_unused]] const ros::TimerEvent& evt)
     {
       /* Initialize number of horizontal sectors etc from camera info message //{ */
-      if (!m_sectors_initialized && m_depth_cinfo_sh->new_data())
+      if (!m_sectors_initialized && m_depth_cinfo_sh->has_data())
       {
-        ROS_INFO("[Bumper]: processing camera info message");
+        ROS_INFO("[Bumper]: Processing camera info message to initialize sectors");
 
         const auto cinfo = m_depth_cinfo_sh->get_data();
         initialize_roi(cinfo->width, cinfo->height);
@@ -155,6 +160,21 @@ namespace mrs_bumper
         ROS_INFO("[Bumper]: Depth camera horizontal FOV: %.1fdeg", horizontal_fov / M_PI * 180.0);
         ROS_INFO("[Bumper]: Depth camera vertical FOV: %.1fdeg", vertical_fov / M_PI * 180.0);
         ROS_INFO("[Bumper]: Number of horizontal sectors: %d", m_n_horizontal_sectors);
+      }
+      //}
+
+      /* Initialize horizontal angle offset of 2D lidar from a new message //{ */
+      if (!m_lidar_2d_offset_initialized && m_lidar_2d_sh->has_data())
+      {
+        ROS_INFO("[Bumper]: Initializing 2D lidar horizontal angle offset");
+
+        const auto lidar_2d_msg = m_lidar_2d_sh->get_data();
+        initialize_lidar_2d_offset(lidar_2d_msg);
+
+        if (m_lidar_2d_offset_initialized)
+          ROS_INFO("[Bumper]: 2D lidar horizontal angle offset: %.2f", m_lidar_2d_offset);
+        else
+          ROS_INFO("[Bumper]: 2D lidar horizontal angle offset initialization failed, will retry.");
       }
       //}
 
@@ -226,7 +246,7 @@ namespace mrs_bumper
         //}
 
         /* Check data from the horizontal 2D lidar //{ */
-        if (m_lidar_2d_sh->new_data())
+        if (m_lidar_2d_offset_initialized && m_lidar_2d_sh->new_data())
         {
           sensor_msgs::LaserScan source_msg = *m_lidar_2d_sh->get_data();
 
@@ -316,8 +336,9 @@ namespace mrs_bumper
         //}
       } else
       {
+        /* check for fallback timeout, apply if neccessary //{ */
         /* if we got a first sensor message, but still no cinfo, remember the stamp (for fallback timeout) //{ */
-
+        
         if (!m_first_message_received && m_depthmap_sh->has_data())
         {
           m_first_message_stamp = m_depthmap_sh->get_data()->header.stamp;
@@ -338,9 +359,10 @@ namespace mrs_bumper
           m_first_message_stamp = m_lidar_1d_up_sh->get_data()->header.stamp;
           m_first_message_received = true;
         }
-
+        
         //}
-
+        
+        /* if the realsense timeout has run out, apply fallback values //{ */
         const ros::Duration cinfo_delay = ros::Time::now() - m_first_message_stamp;
         if (m_first_message_received && cinfo_delay >= m_fallback_timeout)
         {
@@ -349,6 +371,8 @@ namespace mrs_bumper
           initialize_sectors(m_fallback_n_horizontal_sectors, m_fallback_vertical_fov);
           m_sectors_initialized = true;
         }
+        //}
+        //}
       }
     }
     //}
@@ -377,15 +401,22 @@ namespace mrs_bumper
 
     /* ROS related variables (subscribers, timers etc.) //{ */
     std::unique_ptr<drmgr_t> m_drmgr_ptr;
+
     mrs_lib::SubscribeHandlerPtr<sensor_msgs::ImageConstPtr> m_depthmap_sh;
     mrs_lib::SubscribeHandlerPtr<sensor_msgs::CameraInfoConstPtr> m_depth_cinfo_sh;
     mrs_lib::SubscribeHandlerPtr<sensor_msgs::LaserScanConstPtr> m_lidar_2d_sh;
     mrs_lib::SubscribeHandlerPtr<sensor_msgs::RangeConstPtr> m_lidar_1d_down_sh;
     mrs_lib::SubscribeHandlerPtr<sensor_msgs::RangeConstPtr> m_lidar_1d_up_sh;
+
+    tf2_ros::Buffer m_tf_buffer;
+    std::unique_ptr<tf2_ros::TransformListener> m_tf_listener_ptr;
+
     ros::Publisher m_obstacles_pub;
     ros::Publisher m_processed_depthmap_pub;
     ros::Publisher m_depthmap_hist_pub;
+
     ros::Timer m_main_loop_timer;
+
     std::string m_node_name;
     //}
 
@@ -408,6 +439,8 @@ namespace mrs_bumper
     ros::Time m_first_message_stamp;
     bool m_first_message_received;
     bool m_sectors_initialized;
+    bool m_lidar_2d_offset_initialized;
+    double m_lidar_2d_offset;
     //}
 
   private:
@@ -454,6 +487,18 @@ namespace mrs_bumper
     }
     //}
 
+    /* initialize_lidar_2d_offset() method //{ */
+    void initialize_lidar_2d_offset(sensor_msgs::LaserScan::ConstPtr lidar_2d_msg)
+    {
+      tf2::Vector3 x_lidar(1.0, 0.0, 0.0);
+      tf2::Vector3 x_fcu;
+      if (!transform(x_lidar, lidar_2d_msg->header.frame_id, x_fcu, m_frame_id, lidar_2d_msg->header.stamp))
+        return;
+      m_lidar_2d_offset = atan2(x_fcu.getY(), x_fcu.getX());
+      m_lidar_2d_offset_initialized = true;
+    }
+    //}
+
     /* initialize_sectors() method //{ */
     void initialize_sectors(int n_horizontal_sectors, double vfov)
     {
@@ -465,6 +510,27 @@ namespace mrs_bumper
       m_vertical_fov = vfov;
       update_filter_sizes();
       m_sectors_initialized = true;
+    }
+    //}
+
+    /* transform() method //{ */
+    template <typename T>
+    bool transform(const T& orig, const std::string& from_frame_id, T& transformed, const std::string& to_frame_id, const ros::Time& stamp)
+    {
+      try
+      {
+        const ros::Duration timeout(1.0 / 100.0);
+        // Obtain transform between the frames
+        const geometry_msgs::TransformStamped tf = m_tf_buffer.lookupTransform(to_frame_id, from_frame_id, stamp, timeout);
+        tf2::doTransform(orig, transformed, tf);
+      }
+      catch (tf2::TransformException& ex)
+      {
+        NODELET_WARN_THROTTLE(1.0, "[%s]: Error during transform from \"%s\" frame to \"%s\" frame.\n\tMSG: %s", m_node_name.c_str(), from_frame_id.c_str(),
+                              to_frame_id.c_str(), ex.what());
+        return false;
+      }
+      return true;
     }
     //}
 
@@ -656,7 +722,7 @@ namespace mrs_bumper
         for (unsigned ray_it = 0; ray_it < scan_msg.ranges.size(); ray_it++)
         {
           const double ray_range = scan_msg.ranges.at(ray_it);
-          const double ray_angle = scan_msg.angle_min + ray_it * scan_msg.angle_increment;
+          const double ray_angle = scan_msg.angle_min + ray_it * scan_msg.angle_increment + m_lidar_2d_offset;
           if (ray_range < min_range && angle_in_range(ray_angle, cur_angle_range))
             min_range = ray_range;
         }
