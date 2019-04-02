@@ -166,7 +166,7 @@ namespace mrs_bumper
       /* Initialize horizontal angle offset of 2D lidar from a new message //{ */
       if (!m_lidar_2d_offset_initialized && m_lidar_2d_sh->has_data())
       {
-        ROS_INFO("[Bumper]: Initializing 2D lidar horizontal angle offset");
+        ROS_INFO_THROTTLE(1.0, "[Bumper]: Initializing 2D lidar horizontal angle offset");
 
         const auto lidar_2d_msg = m_lidar_2d_sh->get_data();
         initialize_lidar_2d_offset(lidar_2d_msg);
@@ -174,7 +174,7 @@ namespace mrs_bumper
         if (m_lidar_2d_offset_initialized)
           ROS_INFO("[Bumper]: 2D lidar horizontal angle offset: %.2f", m_lidar_2d_offset);
         else
-          ROS_INFO("[Bumper]: 2D lidar horizontal angle offset initialization failed, will retry.");
+          ROS_WARN_THROTTLE(1.0, "[Bumper]: 2D lidar horizontal angle offset initialization failed, will retry.");
       }
       //}
 
@@ -490,11 +490,13 @@ namespace mrs_bumper
     /* initialize_lidar_2d_offset() method //{ */
     void initialize_lidar_2d_offset(sensor_msgs::LaserScan::ConstPtr lidar_2d_msg)
     {
-      tf2::Vector3 x_lidar(1.0, 0.0, 0.0);
-      tf2::Vector3 x_fcu;
+      geometry_msgs::Vector3 x_lidar;
+      x_lidar.x = 1.0;
+      x_lidar.y = x_lidar.z = 0.0;
+      geometry_msgs::Vector3 x_fcu;
       if (!transform(x_lidar, lidar_2d_msg->header.frame_id, x_fcu, m_frame_id, lidar_2d_msg->header.stamp))
         return;
-      m_lidar_2d_offset = atan2(x_fcu.getY(), x_fcu.getX());
+      m_lidar_2d_offset = atan2(x_fcu.y, x_fcu.x);
       m_lidar_2d_offset_initialized = true;
     }
     //}

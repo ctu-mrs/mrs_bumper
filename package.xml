@@ -13,11 +13,11 @@
   <buildtool_depend>catkin</buildtool_depend>
 
   <depend>roscpp</depend>
+  <depend>nodelet</depend>
   <depend>dynamic_reconfigure</depend>
   <depend>tf2_ros</depend>
   <depend>tf2_geometry_msgs</depend>
   <depend>mrs_lib</depend>
-  <depend>nodelet</depend>
   <depend>mrs_msgs</depend>
 
   <exec_depend>message_runtime</exec_depend>

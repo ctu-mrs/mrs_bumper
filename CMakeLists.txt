@@ -7,9 +7,10 @@ project(mrs_bumper)
 find_package(catkin REQUIRED COMPONENTS
   roscpp
   dynamic_reconfigure
-  sensor_msgs
   tf2_ros
   tf2_geometry_msgs
+  sensor_msgs
+  geometry_msgs
   cv_bridge
   image_transport
   image_geometry
