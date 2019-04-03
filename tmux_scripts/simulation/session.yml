@@ -32,8 +32,8 @@ windows:
   - mrs_bumper:
       layout: even-vertical
       panes:
-        - waitForRos; roslaunch mrs_bumper bumper.launch
-        - waitForRos; rostopic echo /uav1/bumper/obstacle_sectors
+        - waitForOdometry; roslaunch mrs_bumper bumper.launch
+        - waitForOdometry; rostopic echo /uav1/bumper/obstacle_sectors
   - rviz:
       layout: even-vertical
       panes:
@@ -43,6 +43,10 @@ windows:
       layout: even-vertical
       panes:
         - waitForControl; roslaunch mrs_general logitech_joystick.launch
+  - tfs:
+      layout: even-vertical
+      panes:
+        - waitForControl; roslaunch mrs_gazebo_state_publisher state_publisher.launch
   - gazebo_camera_follow:
       layout: even-vertical
       panes:

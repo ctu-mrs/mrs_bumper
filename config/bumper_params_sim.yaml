@@ -1,6 +1,7 @@
 roi:
   centering: True
   height: 480
+
 # this value is used in the input depth map to indicate that
 # depth of the specific pixel is unknown
 unknown_pixel_value: 0
@@ -18,3 +19,10 @@ max_depth: 10.0 # meters
 histogram_n_bins: 100
 # minimal number of pixels with depth smaller or equal than the resulting obstacle distance
 histogram_quantile_area: 200
+
+# Fallback settings in case Realsense is disconnected or something.
+# These settings are used if Realsense camera info is not received after the timeout
+# duration has elapsed since receiving the first sensory message.
+fallback_timeout: 5.0 # seconds
+fallback_n_horizontal_sectors: 6
+fallback_vertical_fov: !degrees 32
