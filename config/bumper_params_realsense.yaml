@@ -7,7 +7,7 @@ roi:
 # depth of the specific pixel is unknown
 unknown_pixel_value: 0
 # size of the median filter, used for each sector
-median_filter_size: 6
+median_filter_size: 12
 # how often data from sensors are evaluated and the bumper topic published
 update_rate: 12
 
