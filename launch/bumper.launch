@@ -32,6 +32,8 @@
 
   <group ns="$(arg uav_name)">
 
+    <node pkg="tf2_ros" type="static_transform_publisher" name="uav2uavhorizontal" args="0 0 0 0 0 0 fcu_$(arg uav_name) fcu_$(arg uav_name)_horizontal" />
+
     <node pkg="nodelet" type="nodelet" name="bumper" args="$(arg nodelet_load)" output="screen" launch-prefix="$(arg launch_prefix)">
 
       <param name="uav_name" value="$(arg uav_name)" />
