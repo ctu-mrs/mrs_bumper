@@ -182,27 +182,17 @@ namespace mrs_bumper
       /* Apply possible changes from dynamic reconfigure //{ */
       if (m_median_filter_size != m_drmgr_ptr->config.median_filter_size)
       {
-        if (m_drmgr_ptr->config.median_filter_size > 0)
-        {
-          m_median_filter_size = m_drmgr_ptr->config.median_filter_size;
-          update_filter_sizes();
-        } else
-        {
-          ROS_ERROR("[Bumper]: Size of median filter cannot be <= 0: %d! Ignoring new value.", m_drmgr_ptr->config.median_filter_size);
-        }
+        m_median_filter_size = m_drmgr_ptr->config.median_filter_size;
+        update_filter_sizes();
       }
 
       if (m_update_rate != m_drmgr_ptr->config.update_rate)
       {
-        if (m_drmgr_ptr->config.update_rate > 0.0)
-        {
-          m_update_rate = m_drmgr_ptr->config.update_rate;
-          m_main_loop_timer.setPeriod(ros::Duration(1.0 / m_update_rate));
-        } else
-        {
-          ROS_ERROR("[Bumper]: Update rate cannot be <= 0: %lf! Ignoring new value.", m_drmgr_ptr->config.update_rate);
-        }
+        m_update_rate = m_drmgr_ptr->config.update_rate;
+        m_main_loop_timer.setPeriod(ros::Duration(1.0 / m_update_rate));
       }
+
+      m_lidar_scanner_filter_size = m_drmgr_ptr->config.filter_size;
       //}
 
       if (m_sectors_initialized)
@@ -757,14 +747,17 @@ namespace mrs_bumper
         double min_range = std::numeric_limits<double>::max();
         // buffer of the last *buffer_length* measurements
         boost::circular_buffer<double> buffer(buffer_length);
-        for (unsigned ray_it = 0; ray_it < scan_msg.ranges.size(); ray_it++)
+        // the iteration should go around by *buffer_length* to avoid ignoring small obstacles at start or end of the scan
+        for (int ray_it = -buffer_length; ray_it < (int)(scan_msg.ranges.size()+buffer_length); ray_it++)
         {
-          const double ray_range = scan_msg.ranges.at(ray_it);
+          const int ray_idx = ray_it%scan_msg.ranges.size();
+          const double ray_range = scan_msg.ranges.at(ray_idx);
           const double ray_angle = scan_msg.angle_min + ray_it * scan_msg.angle_increment + m_lidar_2d_offset;
+          // add the current value to the buffer
+          buffer.push_back(ray_range);
           // check if the ray is in the current horizontal sector
           if (angle_in_range(ray_angle, cur_angle_range))
           {
-            buffer.push_back(ray_range);
             // If the buffer has *buffer_length* measurements and maximal distance
             // in the buffer is lower than *min_range*, update *min_range*.
             // This should filter out solitary false detections of the laser rangefinder,
