@@ -18,7 +18,7 @@
   <arg unless="$(arg simulation)" name="lidar_1d_down_topic" value="/$(arg uav_name)/garmin/range"/>
   <arg     if="$(arg simulation)" name="lidar_1d_down_topic" value="/$(arg uav_name)/garmin/range"/>
   <arg unless="$(arg simulation)" name="lidar_1d_up_topic" value="/$(arg uav_name)/garmin/range_up"/>
-  <arg     if="$(arg simulation)" name="lidar_1d_up_topic" value="/$(arg uav_name)/garmin/range_up"/>
+  <arg     if="$(arg simulation)" name="lidar_1d_up_topic" value="/$(arg uav_name)/garmin_up/range"/>
 
   <arg name="ignore_mask" default="$(optenv IGNORE_MASK true)" />
   <arg unless="$(arg ignore_mask)" name="mask_filename" value="$(find mrs_bumper)/masks/realsense_f550_mask.bmp"/>
