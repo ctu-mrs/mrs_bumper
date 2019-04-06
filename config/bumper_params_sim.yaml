@@ -20,6 +20,17 @@ histogram_n_bins: 100
 # minimal number of pixels with depth smaller or equal than the resulting obstacle distance
 histogram_quantile_area: 200
 
+# This is the length of the filter buffer, applied to 2D lidar scans when detecting
+# closest obstacle. A buffer of *lidar_scanner_filter_size* last measurements is kept
+# when sequentially going through the scan. If the maximal value from this buffer is
+# smaller than the minimal obstacle distance found in the current scan, the obstacle
+# distance is updated. This should filter out solitary false positives in the laser
+# scan (at least *lidar_scanner_filter_size* consecutive measurements have to be close
+# for an obstacle to be reported). For more details, see code (method
+# *find_obstacles_in_horizontal_sectors_robust*).
+lidar_scanner_filter_size: 3
+
+
 # Fallback settings in case Realsense is disconnected or something.
 # These settings are used if Realsense camera info is not received after the timeout
 # duration has elapsed since receiving the first sensory message.
