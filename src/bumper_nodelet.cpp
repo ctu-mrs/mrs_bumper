@@ -55,6 +55,7 @@ namespace mrs_bumper
       pl.load_param("histogram_n_bins", m_hist_n_bins, 1000);
       pl.load_param("histogram_quantile_area", m_hist_quantile_area, 200);
       pl.load_param("max_depth", m_max_depth);
+      pl.load_param("lidar_scanner_filter_size", m_lidar_scanner_filter_size);
       pl.load_param("depth_camera_offset", m_depth_camera_offset);
       const double fallback_timeout = pl.load_param2<double>("fallback_timeout", 0.0);
       pl.load_param("fallback_n_horizontal_sectors", m_fallback_n_horizontal_sectors, 0);
@@ -250,7 +251,8 @@ namespace mrs_bumper
         {
           sensor_msgs::LaserScan source_msg = *m_lidar_2d_sh->get_data();
 
-          std::vector<double> obstacle_distances = find_obstacles_in_horizontal_sectors(source_msg);
+          /* std::vector<double> obstacle_distances = find_obstacles_in_horizontal_sectors(source_msg); */
+          std::vector<double> obstacle_distances = find_obstacles_in_horizontal_sectors_robust(source_msg, m_lidar_scanner_filter_size);
           for (unsigned sector_it = 0; sector_it < m_n_horizontal_sectors; sector_it++)
           {
             // get the current obstacle distance
@@ -392,6 +394,7 @@ namespace mrs_bumper
     int m_hist_n_bins;
     int m_hist_quantile_area;
     double m_max_depth;
+    double m_lidar_scanner_filter_size;
     double m_depth_camera_offset;
 
     ros::Duration m_fallback_timeout;
@@ -713,7 +716,6 @@ namespace mrs_bumper
     //}
 
     /* find_obstacles_in_horizontal_sectors() method //{ */
-    using scan_cit_t = sensor_msgs::LaserScan::_ranges_type::const_iterator;
     std::vector<double> find_obstacles_in_horizontal_sectors(const sensor_msgs::LaserScan& scan_msg)
     {
       std::vector<double> ret;
@@ -727,6 +729,52 @@ namespace mrs_bumper
           const double ray_angle = scan_msg.angle_min + ray_it * scan_msg.angle_increment + m_lidar_2d_offset;
           if (ray_range < min_range && angle_in_range(ray_angle, cur_angle_range))
             min_range = ray_range;
+        }
+        if (min_range < scan_msg.range_min || min_range > scan_msg.range_max)
+          min_range = ObstacleSectors::OBSTACLE_NOT_DETECTED;
+        ret.push_back(min_range);
+      }
+      return ret;
+    }
+    //}
+
+    /* find_obstacles_in_horizontal_sectors_robust() method //{ */
+    double buffer_max(const boost::circular_buffer<double>& buffer)
+    {
+      double max = std::numeric_limits<double>::lowest();
+      for (const auto& val : buffer)
+      {
+        if (val > max)
+          max = val;
+      }
+      return max;
+    }
+
+    std::vector<double> find_obstacles_in_horizontal_sectors_robust(const sensor_msgs::LaserScan& scan_msg, const unsigned buffer_length)
+    {
+      std::vector<double> ret;
+      ret.reserve(m_n_horizontal_sectors);
+      // check minimal obstacle distance for each horizontal sector
+      for (const auto& cur_angle_range : m_horizontal_sector_ranges)
+      {
+        double min_range = std::numeric_limits<double>::max();
+        // buffer of the last *buffer_length* measurements
+        boost::circular_buffer<double> buffer(buffer_length);
+        for (unsigned ray_it = 0; ray_it < scan_msg.ranges.size(); ray_it++)
+        {
+          const double ray_range = scan_msg.ranges.at(ray_it);
+          const double ray_angle = scan_msg.angle_min + ray_it * scan_msg.angle_increment + m_lidar_2d_offset;
+          // check if the ray is in the current horizontal sector
+          if (angle_in_range(ray_angle, cur_angle_range))
+          {
+            buffer.push_back(ray_range);
+            // If the buffer has *buffer_length* measurements and maximal distance
+            // in the buffer is lower than *min_range*, update *min_range*.
+            // This should filter out solitary false detections of the laser rangefinder,
+            // which would otherwise trigger the repulsion failsafe mechanism.
+            if (buffer.full() && buffer_max(buffer) < min_range)
+              min_range = ray_range;
+          }
         }
         if (min_range < scan_msg.range_min || min_range > scan_msg.range_max)
           min_range = ObstacleSectors::OBSTACLE_NOT_DETECTED;
