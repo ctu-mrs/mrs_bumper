@@ -26,7 +26,6 @@ windows:
           rosservice call /$UAV_NAME/constraint_manager/set_constraints darpa;
           sleep 5;
           rosservice call /$UAV_NAME/control_manager/goto "goal: [-3.5, 3.5, 1.0, -1.57]";
-          history -s rosservice call /$UAV_NAME/control_manager/goto "\"goal: [-5.0, 0.0, 2.0, 0.0]\""
           '
         #}
   - mrs_bumper:
@@ -37,7 +36,6 @@ windows:
   - rviz:
       layout: even-vertical
       panes:
-        - waitForOdometry; rosrun tf2_ros static_transform_publisher 0 0 0 0 0 0 fcu_uav1 fcu_uav1_horizontal
         - waitForOdometry; roslaunch mrs_bumper rviz_uav1.launch
   - joystic:
       layout: even-vertical
@@ -47,6 +45,10 @@ windows:
       layout: even-vertical
       panes:
         - waitForControl; roslaunch mrs_gazebo_state_publisher state_publisher.launch
+  - goto:
+      layout: even-vertical
+      panes:
+        - 'waitForRos; rostopic pub /uav1/control_manager/set_yaw std_msgs/Float64 "data: 0.1" -r 100'
   - gazebo_camera_follow:
       layout: even-vertical
       panes:
