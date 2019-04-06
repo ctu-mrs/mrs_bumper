@@ -624,9 +624,6 @@ namespace mrs_bumper
       const double bin_max = m_max_depth / depthmap_to_meters;
       const double bin_size = bin_max / m_hist_n_bins;
       const auto hist = calculate_histogram(detect_im, m_hist_n_bins, bin_max, usable_pixels);
-#ifdef DEBUG
-      show_hist(hist);
-#endif
       const int quantile = find_histogram_quantile(hist, m_hist_quantile_area);
       double obstacle_dist = quantile * bin_size * depthmap_to_meters;
       if (quantile == m_hist_n_bins)
@@ -684,7 +681,7 @@ namespace mrs_bumper
     /* get_horizontal_sector_angle_interval() method //{ */
     angle_range_t get_horizontal_sector_angle_interval(unsigned sector_it)
     {
-      assert(sector_it > 0 && sector_it < m_n_horizontal_sectors);
+      assert(sector_it >= 0 && sector_it < m_n_horizontal_sectors);
       const double angle_step = 2.0 * M_PI / m_n_horizontal_sectors;
       const double angle_start = normalize_angle(sector_it * angle_step - angle_step / 2.0);
       const double angle_end = normalize_angle(angle_start + angle_step);
