@@ -29,7 +29,7 @@ histogram_quantile_area: 200
 # scan (at least *lidar_scanner_filter_size* consecutive measurements have to be close
 # for an obstacle to be reported). For more details, see code (method
 # *find_obstacles_in_horizontal_sectors_robust*).
-lidar_scanner_filter_size: 3
+lidar_scanner_filter_size: 1
 
 # Fallback settings in case Realsense is disconnected or something.
 # These settings are used if Realsense camera info is not received after the timeout
