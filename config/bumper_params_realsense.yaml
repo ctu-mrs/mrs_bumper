@@ -1,6 +1,6 @@
 roi:
   centering: false
-  height: 480
+  height: 120
   y_offset: 0
 
 # this value is used in the input depth map to indicate that
@@ -34,6 +34,6 @@ lidar_scanner_filter_size: 3
 # Fallback settings in case Realsense is disconnected or something.
 # These settings are used if Realsense camera info is not received after the timeout
 # duration has elapsed since receiving the first sensory message.
-fallback_timeout: 5.0 # seconds
+fallback_timeout: 10.0 # seconds
 fallback_n_horizontal_sectors: 6
 fallback_vertical_fov: !degrees 32
