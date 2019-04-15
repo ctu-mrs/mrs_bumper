@@ -7,9 +7,9 @@ roi:
 # depth of the specific pixel is unknown
 unknown_pixel_value: 0
 # size of the median filter, used for each sector
-median_filter_size: 12
+median_filter_size: 10
 # how often data from sensors are evaluated and the bumper topic published
-update_rate: 12
+update_rate: 10
 
 # This is the offset of the depth camera to compensate its shift from the UAV center.
 # Its value is added to the obstacle distance, measured by the camera.
