@@ -1,14 +1,14 @@
 <?xml version="1.0"?>
 <package format="2">
+
   <name>mrs_bumper</name>
   <version>1.0.0</version>
   <description>Program for publishing bumper messages for reactive collision avoidance</description>
 
+  <author email="vrbamato@fel.cvut.cz">Matouš Vrba</author>
   <maintainer email="vrbamato@fel.cvut.cz">Matouš Vrba</maintainer>
 
-  <license>free of charge</license>
-
-  <author email="vrbamato@fel.cvut.cz">Matouš Vrba</author>
+  <license>MIT</license>
 
   <buildtool_depend>catkin</buildtool_depend>
 
@@ -23,10 +23,7 @@
   <exec_depend>message_runtime</exec_depend>
 
   <export>
-    <!-- Other tools can request additional information be placed here -->
-    <nodelet plugin="${prefix}/bumper_nodelet.xml" />
-
-    generate_messages_cpp
+    <nodelet plugin="${prefix}/plugins.xml" />
   </export>
 
 </package>
