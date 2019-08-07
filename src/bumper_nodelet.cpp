@@ -31,7 +31,6 @@ namespace mrs_bumper
   class Bumper : public nodelet::Nodelet
   {
   public:
-
     /* onInit() method //{ */
     void onInit()
     {
@@ -340,7 +339,7 @@ namespace mrs_bumper
       {
         /* check for fallback timeout, apply if neccessary //{ */
         /* if we got a first sensor message, but still no cinfo, remember the stamp (for fallback timeout) //{ */
-        
+
         if (!m_first_message_received && m_depthmap_sh->has_data())
         {
           m_first_message_stamp = m_depthmap_sh->get_data()->header.stamp;
@@ -361,9 +360,9 @@ namespace mrs_bumper
           m_first_message_stamp = m_lidar_1d_up_sh->get_data()->header.stamp;
           m_first_message_received = true;
         }
-        
+
         //}
-        
+
         /* if the realsense timeout has run out, apply fallback values //{ */
         const ros::Duration cinfo_delay = ros::Time::now() - m_first_message_stamp;
         if (m_first_message_received && cinfo_delay >= m_fallback_timeout)
