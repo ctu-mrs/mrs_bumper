@@ -1,5 +1,8 @@
+<?xml version="1.0" ?>
+<?xml-model href="http://sdformat.org/schemas/root.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <sdf version='1.6'>
   <world name='default'>
+    <plugin name="mrs_gazebo_static_transform_republisher_plugin" filename="libmrs_gazebo_static_transform_republisher.so"/>
     <spherical_coordinates>
       <surface_model>EARTH_WGS84</surface_model>
       <latitude_deg>37.4118</latitude_deg>

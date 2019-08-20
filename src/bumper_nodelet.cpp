@@ -758,18 +758,19 @@ namespace mrs_bumper
         boost::circular_buffer<double> buffer(buffer_length);
         for (unsigned ray_it = 0; ray_it < scan_msg.ranges.size(); ray_it++)
         {
-          const double ray_range = scan_msg.ranges.at(ray_it);
-          const double ray_angle = scan_msg.angle_min + ray_it * scan_msg.angle_increment + m_lidar_2d_offset;
+          const double ray_range = scan_msg.ranges.at(ray_it) + buffer_length/2 * scan_msg.angle_increment;
+          const double ray_angle = scan_msg.angle_min + ray_it * scan_msg.angle_increment + m_lidar_2d_offset - buffer_length/2 * scan_msg.angle_increment;
           // check if the ray is in the current horizontal sector
           if (angle_in_range(ray_angle, cur_angle_range))
           {
             buffer.push_back(ray_range);
+            const double cur_max_range = buffer_max(buffer);
             // If the buffer has *buffer_length* measurements and maximal distance
             // in the buffer is lower than *min_range*, update *min_range*.
             // This should filter out solitary false detections of the laser rangefinder,
             // which would otherwise trigger the repulsion failsafe mechanism.
-            if (buffer.full() && buffer_max(buffer) < min_range)
-              min_range = ray_range;
+            if (buffer.full() && cur_max_range < min_range)
+              min_range = cur_max_range;
           }
         }
         if (min_range < scan_msg.range_min || min_range > scan_msg.range_max)

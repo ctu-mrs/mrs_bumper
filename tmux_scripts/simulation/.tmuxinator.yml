@@ -9,7 +9,7 @@ windows:
   - spawn:
       layout: even-vertical
       panes:
-        - waitForSimulation; spawn 1 --run --delete --enable-rangefinder --enable-rangefinder-up --enable-ground-truth --enable-realsense-front --enable-realistic-realsense --enable-rplidar
+        - waitForSimulation; spawn 1 --run --delete --enable-rangefinder --enable-rangefinder-up --enable-ground-truth --enable-rplidar
   - odometry:
       layout: even-vertical
       panes:
