@@ -78,11 +78,11 @@ namespace mrs_bumper
       // Initialize subscribers
       mrs_lib::SubscribeMgr smgr(nh, m_node_name);
       const bool subs_time_consistent = false;
-      m_depthmap_sh = smgr.create_handler<decltype(m_depthmap_sh)::element_type::message_type, subs_time_consistent>("depthmap", ros::Duration(5.0));
-      m_depth_cinfo_sh = smgr.create_handler<decltype(m_depth_cinfo_sh)::element_type::message_type, subs_time_consistent>("depth_camera_info", ros::Duration(5.0));
-      m_lidar_2d_sh = smgr.create_handler<decltype(m_lidar_2d_sh)::element_type::message_type, subs_time_consistent>("lidar_2d", ros::Duration(5.0));
-      m_lidar_1d_down_sh = smgr.create_handler<decltype(m_lidar_1d_down_sh)::element_type::message_type, subs_time_consistent>("lidar_1d_down", ros::Duration(5.0));
-      m_lidar_1d_up_sh = smgr.create_handler<decltype(m_lidar_1d_up_sh)::element_type::message_type, subs_time_consistent>("lidar_1d_up", ros::Duration(5.0));
+      m_depthmap_sh = smgr.create_handler<mrs_lib::message_type<decltype(m_depthmap_sh)>, subs_time_consistent>("depthmap", ros::Duration(5.0));
+      m_depth_cinfo_sh = smgr.create_handler<mrs_lib::message_type<decltype(m_depth_cinfo_sh)>, subs_time_consistent>("depth_camera_info", ros::Duration(5.0));
+      m_lidar_2d_sh = smgr.create_handler<mrs_lib::message_type<decltype(m_lidar_2d_sh)>, subs_time_consistent>("lidar_2d", ros::Duration(5.0));
+      m_lidar_1d_down_sh = smgr.create_handler<mrs_lib::message_type<decltype(m_lidar_1d_down_sh)>, subs_time_consistent>("lidar_1d_down", ros::Duration(5.0));
+      m_lidar_1d_up_sh = smgr.create_handler<mrs_lib::message_type<decltype(m_lidar_1d_up_sh)>, subs_time_consistent>("lidar_1d_up", ros::Duration(5.0));
       
       // Initialize publishers
       m_obstacles_pub = nh.advertise<ObstacleSectors>("obstacle_sectors", 1);
@@ -402,11 +402,11 @@ namespace mrs_bumper
     /* ROS related variables (subscribers, timers etc.) //{ */
     std::unique_ptr<drmgr_t> m_drmgr_ptr;
 
-    mrs_lib::SubscribeHandlerPtr<sensor_msgs::ImageConstPtr> m_depthmap_sh;
-    mrs_lib::SubscribeHandlerPtr<sensor_msgs::CameraInfoConstPtr> m_depth_cinfo_sh;
-    mrs_lib::SubscribeHandlerPtr<sensor_msgs::LaserScanConstPtr> m_lidar_2d_sh;
-    mrs_lib::SubscribeHandlerPtr<sensor_msgs::RangeConstPtr> m_lidar_1d_down_sh;
-    mrs_lib::SubscribeHandlerPtr<sensor_msgs::RangeConstPtr> m_lidar_1d_up_sh;
+    mrs_lib::SubscribeHandlerPtr<sensor_msgs::Image> m_depthmap_sh;
+    mrs_lib::SubscribeHandlerPtr<sensor_msgs::CameraInfo> m_depth_cinfo_sh;
+    mrs_lib::SubscribeHandlerPtr<sensor_msgs::LaserScan> m_lidar_2d_sh;
+    mrs_lib::SubscribeHandlerPtr<sensor_msgs::Range> m_lidar_1d_down_sh;
+    mrs_lib::SubscribeHandlerPtr<sensor_msgs::Range> m_lidar_1d_up_sh;
 
     tf2_ros::Buffer m_tf_buffer;
     std::unique_ptr<tf2_ros::TransformListener> m_tf_listener_ptr;

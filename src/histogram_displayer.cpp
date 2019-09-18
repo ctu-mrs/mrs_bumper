@@ -66,7 +66,7 @@ int main(int argc, char** argv)
 
     if (sh_hist->new_data())
     {
-      const mrs_msgs::Histogram hist_msg = sh_hist->get_data();
+      const mrs_msgs::Histogram hist_msg = *(sh_hist->get_data());
       const int hr = 1000;
       const int hc = 1000;
       cv::Mat disp_im = cv::Mat::zeros(hr + bot_rows, hc + right_cols, CV_8UC3);
