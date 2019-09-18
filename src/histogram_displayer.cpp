@@ -1,7 +1,7 @@
 // clang: MatousFormat
 #include <ros/ros.h>
 #include <mrs_lib/ParamLoader.h>
-#include <mrs_lib/SubscribeHandler.h>
+#include <mrs_lib/subscribe_handler.h>
 
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -43,17 +43,9 @@ int main(int argc, char** argv)
 
   /** Create publishers and subscribers //{**/
   // Initialize other subs and pubs
-  mrs_lib::SubscribeHandlerPtr<mrs_msgs::Histogram> sh_hist;
-
   mrs_lib::SubscribeMgr smgr(nh);
   const bool subs_time_consistent = false;
-  sh_hist = smgr.create_handler<mrs_msgs::Histogram, subs_time_consistent>("histogram", 1, ros::TransportHints().tcpNoDelay(), ros::Duration(5.0));
-
-  if (!smgr.loaded_successfully())
-  {
-    ROS_ERROR("[%s]: Failed to subscribe some nodes", ros::this_node::getName().c_str());
-    ros::shutdown();
-  }
+  auto sh_hist = smgr.create_handler<mrs_msgs::Histogram, subs_time_consistent>("histogram", ros::Duration(5.0));
 
   //}
 

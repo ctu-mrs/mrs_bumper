@@ -11,9 +11,11 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 
+#include <boost/circular_buffer.hpp>
+
 #include <mrs_lib/ParamLoader.h>
 #include <mrs_lib/DynamicReconfigureMgr.h>
-#include <mrs_lib/SubscribeHandler.h>
+#include <mrs_lib/subscribe_handler.h>
 
 #include <mrs_bumper/BumperConfig.h>
 #include <mrs_msgs/ObstacleSectors.h>
@@ -76,16 +78,12 @@ namespace mrs_bumper
       // Initialize subscribers
       mrs_lib::SubscribeMgr smgr(nh, m_node_name);
       const bool subs_time_consistent = false;
-      m_depthmap_sh = smgr.create_handler_threadsafe<sensor_msgs::ImageConstPtr, subs_time_consistent>("depthmap", 1, ros::TransportHints().tcpNoDelay(),
-                                                                                                       ros::Duration(5.0));
-      m_depth_cinfo_sh = smgr.create_handler_threadsafe<sensor_msgs::CameraInfoConstPtr, subs_time_consistent>(
-          "depth_camera_info", 1, ros::TransportHints().tcpNoDelay(), ros::Duration(5.0));
-      m_lidar_2d_sh = smgr.create_handler_threadsafe<sensor_msgs::LaserScanConstPtr, subs_time_consistent>("lidar_2d", 1, ros::TransportHints().tcpNoDelay(),
-                                                                                                           ros::Duration(5.0));
-      m_lidar_1d_down_sh = smgr.create_handler_threadsafe<sensor_msgs::RangeConstPtr, subs_time_consistent>(
-          "lidar_1d_down", 1, ros::TransportHints().tcpNoDelay(), ros::Duration(5.0));
-      m_lidar_1d_up_sh = smgr.create_handler_threadsafe<sensor_msgs::RangeConstPtr, subs_time_consistent>("lidar_1d_up", 1, ros::TransportHints().tcpNoDelay(),
-                                                                                                          ros::Duration(5.0));
+      m_depthmap_sh = smgr.create_handler<decltype(m_depthmap_sh)::element_type::message_type, subs_time_consistent>("depthmap", ros::Duration(5.0));
+      m_depth_cinfo_sh = smgr.create_handler<decltype(m_depth_cinfo_sh)::element_type::message_type, subs_time_consistent>("depth_camera_info", ros::Duration(5.0));
+      m_lidar_2d_sh = smgr.create_handler<decltype(m_lidar_2d_sh)::element_type::message_type, subs_time_consistent>("lidar_2d", ros::Duration(5.0));
+      m_lidar_1d_down_sh = smgr.create_handler<decltype(m_lidar_1d_down_sh)::element_type::message_type, subs_time_consistent>("lidar_1d_down", ros::Duration(5.0));
+      m_lidar_1d_up_sh = smgr.create_handler<decltype(m_lidar_1d_up_sh)::element_type::message_type, subs_time_consistent>("lidar_1d_up", ros::Duration(5.0));
+      
       // Initialize publishers
       m_obstacles_pub = nh.advertise<ObstacleSectors>("obstacle_sectors", 1);
       m_processed_depthmap_pub = nh.advertise<sensor_msgs::Image>("processed_depthmap", 1);
