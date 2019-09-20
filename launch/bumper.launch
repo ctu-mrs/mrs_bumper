@@ -1,44 +1,44 @@
 <launch>
 
-  <arg name="uav_name" default="$(optenv UAV_NAME uav)"/>
-
+  <arg name="UAV_NAME" default="$(env UAV_NAME)"/>
+  <arg name="RUN_TYPE" default="$(env RUN_TYPE)" />
+  <arg name="standalone" default="true" />
   <arg name="debug" default="false" />
+
   <arg unless="$(arg debug)" name="launch_prefix" value=""/>
   <arg     if="$(arg debug)" name="launch_prefix" value="debug_roslaunch"/>
 
-  <arg name="simulation" default="$(optenv SIMULATION false)" />
-  <arg unless="$(arg simulation)" name="config_file" value="$(find mrs_bumper)/config/bumper_params_realsense.yaml"/>
-  <arg     if="$(arg simulation)" name="config_file" value="$(find mrs_bumper)/config/bumper_params_sim.yaml"/>
-  <arg unless="$(arg simulation)" name="depthmap_topic" value="/$(arg uav_name)/rs_d435/aligned_depth_to_color/image_raw"/>
-  <arg     if="$(arg simulation)" name="depthmap_topic" value="/$(arg uav_name)/realsense/camera/depth/image_raw"/>
-  <arg unless="$(arg simulation)" name="depth_cinfo_topic" value="/$(arg uav_name)/rs_d435/aligned_depth_to_color/camera_info"/>
-  <arg     if="$(arg simulation)" name="depth_cinfo_topic" value="/$(arg uav_name)/realsense/camera/depth/camera_info"/>
-  <arg unless="$(arg simulation)" name="lidar_2d_topic" value="/$(arg uav_name)/rplidar/scan"/>
-  <arg     if="$(arg simulation)" name="lidar_2d_topic" value="/$(arg uav_name)/rplidar/scan"/>
-  <arg unless="$(arg simulation)" name="lidar_1d_down_topic" value="/$(arg uav_name)/garmin/range"/>
-  <arg     if="$(arg simulation)" name="lidar_1d_down_topic" value="/$(arg uav_name)/garmin/range"/>
-  <arg unless="$(arg simulation)" name="lidar_1d_up_topic" value="/$(arg uav_name)/garmin/range_up"/>
-  <arg     if="$(arg simulation)" name="lidar_1d_up_topic" value="/$(arg uav_name)/garmin_up/range"/>
+  <arg     if="$(eval arg('RUN_TYPE') == 'simulation')" name="config_file" value="$(find mrs_bumper)/config/bumper_params_sim.yaml"/>
+  <arg unless="$(eval arg('RUN_TYPE') == 'simulation')" name="config_file" value="$(find mrs_bumper)/config/bumper_params_realsense.yaml"/>
+  <arg     if="$(eval arg('RUN_TYPE') == 'simulation')" name="depthmap_topic" value="/$(arg UAV_NAME)/realsense/camera/depth/image_raw"/>
+  <arg unless="$(eval arg('RUN_TYPE') == 'simulation')" name="depthmap_topic" value="/$(arg UAV_NAME)/rs_d435/aligned_depth_to_color/image_raw"/>
+  <arg     if="$(eval arg('RUN_TYPE') == 'simulation')" name="depth_cinfo_topic" value="/$(arg UAV_NAME)/realsense/camera/depth/camera_info"/>
+  <arg unless="$(eval arg('RUN_TYPE') == 'simulation')" name="depth_cinfo_topic" value="/$(arg UAV_NAME)/rs_d435/aligned_depth_to_color/camera_info"/>
+  <arg     if="$(eval arg('RUN_TYPE') == 'simulation')" name="lidar_2d_topic" value="/$(arg UAV_NAME)/rplidar/scan"/>
+  <arg unless="$(eval arg('RUN_TYPE') == 'simulation')" name="lidar_2d_topic" value="/$(arg UAV_NAME)/rplidar/scan"/>
+  <arg     if="$(eval arg('RUN_TYPE') == 'simulation')" name="lidar_1d_down_topic" value="/$(arg UAV_NAME)/garmin/range"/>
+  <arg unless="$(eval arg('RUN_TYPE') == 'simulation')" name="lidar_1d_down_topic" value="/$(arg UAV_NAME)/garmin/range"/>
+  <arg     if="$(eval arg('RUN_TYPE') == 'simulation')" name="lidar_1d_up_topic" value="/$(arg UAV_NAME)/garmin_up/range"/>
+  <arg unless="$(eval arg('RUN_TYPE') == 'simulation')" name="lidar_1d_up_topic" value="/$(arg UAV_NAME)/garmin/range_up"/>
 
   <arg name="ignore_mask" default="$(optenv IGNORE_MASK true)" />
   <arg unless="$(arg ignore_mask)" name="mask_filename" value="$(find mrs_bumper)/masks/realsense_f550_mask.bmp"/>
   <arg     if="$(arg ignore_mask)" name="mask_filename" value=""/>
 
-  <arg name="standalone" default="true" />
   <arg name="manager" default="detection_nodelet_manager" />
   <arg name="nodelet" value="mrs_bumper/Bumper" />
   <arg unless="$(arg standalone)" name="nodelet_load" value="load $(arg nodelet) $(arg manager)"/>
   <arg     if="$(arg standalone)" name="nodelet_load" value="standalone $(arg nodelet)"/>
 
-  <group ns="$(arg uav_name)">
+  <group ns="$(arg UAV_NAME)">
 
-    <node pkg="tf2_ros" type="static_transform_publisher" name="uav2uavhorizontal" args="0 0 0 0 0 0 fcu_$(arg uav_name) fcu_$(arg uav_name)_horizontal" />
+    <node pkg="tf2_ros" type="static_transform_publisher" name="uav2uavhorizontal" args="0 0 0 0 0 0 fcu_$(arg UAV_NAME) fcu_$(arg UAV_NAME)_horizontal" />
 
     <node pkg="nodelet" type="nodelet" name="bumper" args="$(arg nodelet_load)" output="screen" launch-prefix="$(arg launch_prefix)">
 
-      <param name="uav_name" value="$(arg uav_name)" />
+      <param name="uav_name" value="$(arg UAV_NAME)" />
       <param name="path_to_mask" value="$(arg mask_filename)" />
-      <param name="frame_id" value="fcu_$(arg uav_name)_horizontal" />
+      <param name="frame_id" value="fcu_$(arg UAV_NAME)_horizontal" />
       <rosparam file="$(arg config_file)" />
 
       <remap from="~depthmap" to="$(arg depthmap_topic)" />
