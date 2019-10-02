@@ -4,6 +4,7 @@
   <arg name="RUN_TYPE" default="$(env RUN_TYPE)" />
   <arg name="standalone" default="true" />
   <arg name="debug" default="false" />
+  <arg name="frame" default="fcu_$(env UAV_NAME)_horizontal" />
 
   <arg unless="$(arg debug)" name="launch_prefix" value=""/>
   <arg     if="$(arg debug)" name="launch_prefix" value="debug_roslaunch"/>
@@ -38,7 +39,7 @@
 
       <param name="uav_name" value="$(arg UAV_NAME)" />
       <param name="path_to_mask" value="$(arg mask_filename)" />
-      <param name="frame_id" value="fcu_$(arg UAV_NAME)_horizontal" />
+      <param name="frame_id" value="$(arg frame)" />
       <rosparam file="$(arg config_file)" />
 
       <remap from="~depthmap" to="$(arg depthmap_topic)" />
