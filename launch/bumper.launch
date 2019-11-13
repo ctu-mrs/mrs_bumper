@@ -4,7 +4,8 @@
   <arg name="RUN_TYPE" default="$(env RUN_TYPE)" />
   <arg name="standalone" default="true" />
   <arg name="debug" default="false" />
-  <arg name="frame" default="fcu_$(env UAV_NAME)_horizontal" />
+  <arg name="fcu_frame" default="$(arg UAV_NAME)/fcu" />
+  <arg name="fcu_horizontal_frame" default="$(arg UAV_NAME)/fcu_horizontal" />
 
   <arg unless="$(arg debug)" name="launch_prefix" value=""/>
   <arg     if="$(arg debug)" name="launch_prefix" value="debug_roslaunch"/>
@@ -33,13 +34,13 @@
 
   <group ns="$(arg UAV_NAME)">
 
-    <node pkg="tf2_ros" type="static_transform_publisher" name="uav2uavhorizontal" args="0 0 0 0 0 0 fcu_$(arg UAV_NAME) fcu_$(arg UAV_NAME)_horizontal" />
+    <node pkg="tf2_ros" type="static_transform_publisher" name="fcu_to_fcu_horizontal" args="0 0 0 0 0 0 $(arg fcu_frame) $(arg fcu_horizontal_frame)" />
 
     <node pkg="nodelet" type="nodelet" name="bumper" args="$(arg nodelet_load)" output="screen" launch-prefix="$(arg launch_prefix)">
 
       <param name="uav_name" value="$(arg UAV_NAME)" />
       <param name="path_to_mask" value="$(arg mask_filename)" />
-      <param name="frame_id" value="$(arg frame)" />
+      <param name="frame_id" value="$(arg fcu_horizontal_frame)" />
       <rosparam file="$(arg config_file)" />
 
       <remap from="~depthmap" to="$(arg depthmap_topic)" />
