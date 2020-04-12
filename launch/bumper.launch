@@ -10,19 +10,6 @@
   <arg unless="$(arg debug)" name="launch_prefix" value=""/>
   <arg     if="$(arg debug)" name="launch_prefix" value="debug_roslaunch"/>
 
-  <arg     if="$(eval arg('RUN_TYPE') == 'simulation')" name="config_file" value="$(find mrs_bumper)/config/bumper_params_sim.yaml"/>
-  <arg unless="$(eval arg('RUN_TYPE') == 'simulation')" name="config_file" value="$(find mrs_bumper)/config/bumper_params_realsense.yaml"/>
-  <arg     if="$(eval arg('RUN_TYPE') == 'simulation')" name="depthmap_topic" value="/$(arg UAV_NAME)/realsense/camera/depth/image_raw"/>
-  <arg unless="$(eval arg('RUN_TYPE') == 'simulation')" name="depthmap_topic" value="/$(arg UAV_NAME)/rs_d435/aligned_depth_to_color/image_raw"/>
-  <arg     if="$(eval arg('RUN_TYPE') == 'simulation')" name="depth_cinfo_topic" value="/$(arg UAV_NAME)/realsense/camera/depth/camera_info"/>
-  <arg unless="$(eval arg('RUN_TYPE') == 'simulation')" name="depth_cinfo_topic" value="/$(arg UAV_NAME)/rs_d435/aligned_depth_to_color/camera_info"/>
-  <arg     if="$(eval arg('RUN_TYPE') == 'simulation')" name="lidar_2d_topic" value="/$(arg UAV_NAME)/rplidar/scan"/>
-  <arg unless="$(eval arg('RUN_TYPE') == 'simulation')" name="lidar_2d_topic" value="/$(arg UAV_NAME)/rplidar/scan"/>
-  <arg     if="$(eval arg('RUN_TYPE') == 'simulation')" name="lidar_1d_down_topic" value="/$(arg UAV_NAME)/garmin/range"/>
-  <arg unless="$(eval arg('RUN_TYPE') == 'simulation')" name="lidar_1d_down_topic" value="/$(arg UAV_NAME)/garmin/range"/>
-  <arg     if="$(eval arg('RUN_TYPE') == 'simulation')" name="lidar_1d_up_topic" value="/$(arg UAV_NAME)/garmin_up/range"/>
-  <arg unless="$(eval arg('RUN_TYPE') == 'simulation')" name="lidar_1d_up_topic" value="/$(arg UAV_NAME)/garmin/range_up"/>
-
   <arg name="ignore_mask" default="$(optenv IGNORE_MASK true)" />
   <arg unless="$(arg ignore_mask)" name="mask_filename" value="$(find mrs_bumper)/masks/realsense_f550_mask.bmp"/>
   <arg     if="$(arg ignore_mask)" name="mask_filename" value=""/>
@@ -36,17 +23,24 @@
 
     <node pkg="nodelet" type="nodelet" name="bumper" args="$(arg nodelet_load)" output="screen" launch-prefix="$(arg launch_prefix)">
 
+      <rosparam file="$(find mrs_bumper)/config/$(arg RUN_TYPE).yaml" />
+
+      <remap     if="$(eval arg('RUN_TYPE') == 'simulation')" from="~depthmap_in" to="rs_d435/camera/depth/image_raw"/>
+      <remap unless="$(eval arg('RUN_TYPE') == 'simulation')" from="~depthmap_in" to="rs_d435/aligned_depth_to_color/image_raw"/>
+      <remap     if="$(eval arg('RUN_TYPE') == 'simulation')" from="~depth_cinfo_in" to="rs_d435/camera/depth/camera_info"/>
+      <remap unless="$(eval arg('RUN_TYPE') == 'simulation')" from="~depth_cinfo_in" to="rs_d435/aligned_depth_to_color/camera_info"/>
+      <remap     if="$(eval arg('RUN_TYPE') == 'simulation')" from="~lidar_2d_in" to="rplidar/scan"/>
+      <remap unless="$(eval arg('RUN_TYPE') == 'simulation')" from="~lidar_2d_in" to="rplidar/scan"/>
+      <remap     if="$(eval arg('RUN_TYPE') == 'simulation')" from="~lidar_1d_down_in" to="garmin/range"/>
+      <remap unless="$(eval arg('RUN_TYPE') == 'simulation')" from="~lidar_1d_down_in" to="garmin/range"/>
+      <remap     if="$(eval arg('RUN_TYPE') == 'simulation')" from="~lidar_1d_up_in" to="garmin_up/range"/>
+      <remap unless="$(eval arg('RUN_TYPE') == 'simulation')" from="~lidar_1d_up_in" to="garmin_up/range"/>
+
       <param name="uav_name" value="$(arg UAV_NAME)" />
       <param name="path_to_mask" value="$(arg mask_filename)" />
       <param name="frame_id" value="$(arg fcu_horizontal_frame)" />
-      <rosparam file="$(arg config_file)" />
 
-      <remap from="~depthmap" to="$(arg depthmap_topic)" />
-      <remap from="~depth_camera_info" to="$(arg depth_cinfo_topic)" />
-      <remap from="~lidar_2d" to="$(arg lidar_2d_topic)" />
-      <remap from="~lidar_1d_down" to="$(arg lidar_1d_down_topic)" />
-      <remap from="~lidar_1d_up" to="$(arg lidar_1d_up_topic)" />
-      <remap from="~obstacle_sectors" to="~obstacle_sectors" />
+      <remap from="~obstacle_sectors_out" to="~obstacle_sectors" />
 
     </node>
 

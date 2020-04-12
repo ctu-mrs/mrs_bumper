@@ -77,12 +77,16 @@ namespace mrs_bumper
       /* Create publishers and subscribers //{ */
       // Initialize subscribers
       mrs_lib::SubscribeHandlerOptions shopts;
+      shopts.nh = nh;
+      shopts.node_name = "Bumper";
       shopts.no_message_timeout = ros::Duration(5.0);
-      mrs_lib::construct_object(m_depthmap_sh, shopts, "depthmap");
-      mrs_lib::construct_object(m_lidar_2d_sh, shopts, "depth_camera_info");
-      mrs_lib::construct_object(m_lidar_1d_down_sh, shopts, "lidar_1d_down");
-      mrs_lib::construct_object(m_lidar_1d_up_sh, shopts, "lidar_1d_up");
-      
+
+      mrs_lib::construct_object(m_depthmap_sh, shopts, "depthmap_in");
+      mrs_lib::construct_object(m_depth_cinfo_sh, shopts, "depth_cinfo_in");
+      mrs_lib::construct_object(m_lidar_2d_sh, shopts, "lidar_2d_in");
+      mrs_lib::construct_object(m_lidar_1d_down_sh, shopts, "lidar_1d_down_in");
+      mrs_lib::construct_object(m_lidar_1d_up_sh, shopts, "lidar_1d_up_in");
+
       // Initialize publishers
       m_obstacles_pub = nh.advertise<ObstacleSectors>("obstacle_sectors", 1);
       m_processed_depthmap_pub = nh.advertise<sensor_msgs::Image>("processed_depthmap", 1);
@@ -755,8 +759,8 @@ namespace mrs_bumper
         boost::circular_buffer<double> buffer(buffer_length);
         for (unsigned ray_it = 0; ray_it < scan_msg.ranges.size(); ray_it++)
         {
-          const double ray_range = scan_msg.ranges.at(ray_it) + buffer_length/2 * scan_msg.angle_increment;
-          const double ray_angle = scan_msg.angle_min + ray_it * scan_msg.angle_increment + m_lidar_2d_offset - buffer_length/2 * scan_msg.angle_increment;
+          const double ray_range = scan_msg.ranges.at(ray_it) + buffer_length / 2 * scan_msg.angle_increment;
+          const double ray_angle = scan_msg.angle_min + ray_it * scan_msg.angle_increment + m_lidar_2d_offset - buffer_length / 2 * scan_msg.angle_increment;
           // check if the ray is in the current horizontal sector
           if (angle_in_range(ray_angle, cur_angle_range))
           {
