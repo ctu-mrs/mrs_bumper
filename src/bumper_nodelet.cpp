@@ -13,8 +13,8 @@
 
 #include <boost/circular_buffer.hpp>
 
-#include <mrs_lib/ParamLoader.h>
-#include <mrs_lib/DynamicReconfigureMgr.h>
+#include <mrs_lib/param_loader.h>
+#include <mrs_lib/dynamic_reconfigure_mgr.h>
 #include <mrs_lib/subscribe_handler.h>
 
 #include <mrs_bumper/BumperConfig.h>
@@ -44,28 +44,28 @@ namespace mrs_bumper
       mrs_lib::ParamLoader pl(nh, m_node_name);
       // LOAD STATIC PARAMETERS
       ROS_INFO("[Bumper]: Loading static parameters:");
-      pl.load_param("update_rate", m_update_rate, 10.0);
-      pl.load_param("unknown_pixel_value", m_unknown_pixel_value);
-      pl.load_param("frame_id", m_frame_id);
-      pl.load_param("median_filter_size", m_median_filter_size, 1);
-      m_roi.x_offset = pl.load_param2<int>("roi/x_offset", 0);
-      m_roi.y_offset = pl.load_param2<int>("roi/y_offset", 0);
-      m_roi.width = pl.load_param2<int>("roi/width", 0);
-      m_roi.height = pl.load_param2<int>("roi/height", 0);
-      pl.load_param("roi/centering", m_roi_centering, false);
-      pl.load_param("histogram_n_bins", m_hist_n_bins, 1000);
-      pl.load_param("histogram_quantile_area", m_hist_quantile_area, 200);
-      pl.load_param("max_depth", m_max_depth);
-      pl.load_param("lidar_scanner_filter_size", m_lidar_scanner_filter_size);
-      pl.load_param("depth_camera_offset", m_depth_camera_offset);
-      const double fallback_timeout = pl.load_param2<double>("fallback_timeout", 0.0);
-      pl.load_param("fallback_n_horizontal_sectors", m_fallback_n_horizontal_sectors, 0);
-      pl.load_param("fallback_vertical_fov", m_fallback_vertical_fov, 0.0);
-      const std::string path_to_mask = pl.load_param2<std::string>("path_to_mask", std::string());
+      pl.loadParam("update_rate", m_update_rate, 10.0);
+      pl.loadParam("unknown_pixel_value", m_unknown_pixel_value);
+      pl.loadParam("frame_id", m_frame_id);
+      pl.loadParam("median_filter_size", m_median_filter_size, 1);
+      m_roi.x_offset = pl.loadParam2<int>("roi/x_offset", 0);
+      m_roi.y_offset = pl.loadParam2<int>("roi/y_offset", 0);
+      m_roi.width = pl.loadParam2<int>("roi/width", 0);
+      m_roi.height = pl.loadParam2<int>("roi/height", 0);
+      pl.loadParam("roi/centering", m_roi_centering, false);
+      pl.loadParam("histogram_n_bins", m_hist_n_bins, 1000);
+      pl.loadParam("histogram_quantile_area", m_hist_quantile_area, 200);
+      pl.loadParam("max_depth", m_max_depth);
+      pl.loadParam("lidar_scanner_filter_size", m_lidar_scanner_filter_size);
+      pl.loadParam("depth_camera_offset", m_depth_camera_offset);
+      const double fallback_timeout = pl.loadParam2<double>("fallback_timeout", 0.0);
+      pl.loadParam("fallback_n_horizontal_sectors", m_fallback_n_horizontal_sectors, 0);
+      pl.loadParam("fallback_vertical_fov", m_fallback_vertical_fov, 0.0);
+      const std::string path_to_mask = pl.loadParam2<std::string>("path_to_mask", std::string());
 
       // LOAD DYNAMIC PARAMETERS
       // CHECK LOADING STATUS
-      if (!pl.loaded_successfully())
+      if (!pl.loadedSuccessfully())
       {
         ROS_ERROR("Some compulsory parameters were not loaded successfully, ending the node");
         ros::shutdown();

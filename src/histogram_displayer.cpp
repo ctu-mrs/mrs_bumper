@@ -1,6 +1,5 @@
 // clang: MatousFormat
 #include <ros/ros.h>
-#include <mrs_lib/ParamLoader.h>
 #include <mrs_lib/subscribe_handler.h>
 
 #include <opencv2/imgproc/imgproc.hpp>
