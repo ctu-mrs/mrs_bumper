@@ -76,13 +76,12 @@ namespace mrs_bumper
 
       /* Create publishers and subscribers //{ */
       // Initialize subscribers
-      mrs_lib::SubscribeMgr smgr(nh, m_node_name);
-      const bool subs_time_consistent = false;
-      m_depthmap_sh = smgr.create_handler<mrs_lib::message_type<decltype(m_depthmap_sh)>, subs_time_consistent>("depthmap", ros::Duration(5.0));
-      m_depth_cinfo_sh = smgr.create_handler<mrs_lib::message_type<decltype(m_depth_cinfo_sh)>, subs_time_consistent>("depth_camera_info", ros::Duration(5.0));
-      m_lidar_2d_sh = smgr.create_handler<mrs_lib::message_type<decltype(m_lidar_2d_sh)>, subs_time_consistent>("lidar_2d", ros::Duration(5.0));
-      m_lidar_1d_down_sh = smgr.create_handler<mrs_lib::message_type<decltype(m_lidar_1d_down_sh)>, subs_time_consistent>("lidar_1d_down", ros::Duration(5.0));
-      m_lidar_1d_up_sh = smgr.create_handler<mrs_lib::message_type<decltype(m_lidar_1d_up_sh)>, subs_time_consistent>("lidar_1d_up", ros::Duration(5.0));
+      mrs_lib::SubscribeHandlerOptions shopts;
+      shopts.no_message_timeout = ros::Duration(5.0);
+      mrs_lib::construct_object(m_depthmap_sh, shopts, "depthmap");
+      mrs_lib::construct_object(m_lidar_2d_sh, shopts, "depth_camera_info");
+      mrs_lib::construct_object(m_lidar_1d_down_sh, shopts, "lidar_1d_down");
+      mrs_lib::construct_object(m_lidar_1d_up_sh, shopts, "lidar_1d_up");
       
       // Initialize publishers
       m_obstacles_pub = nh.advertise<ObstacleSectors>("obstacle_sectors", 1);
@@ -139,11 +138,11 @@ namespace mrs_bumper
     void main_loop([[maybe_unused]] const ros::TimerEvent& evt)
     {
       /* Initialize number of horizontal sectors etc from camera info message //{ */
-      if (!m_sectors_initialized && m_depth_cinfo_sh->has_data())
+      if (!m_sectors_initialized && m_depth_cinfo_sh.hasMsg())
       {
         ROS_INFO("[Bumper]: Processing camera info message to initialize sectors");
 
-        const auto cinfo = m_depth_cinfo_sh->get_data();
+        const auto cinfo = m_depth_cinfo_sh.getMsg();
         initialize_roi(cinfo->width, cinfo->height);
 
         const double w = m_roi.width;
@@ -162,11 +161,11 @@ namespace mrs_bumper
       //}
 
       /* Initialize horizontal angle offset of 2D lidar from a new message //{ */
-      if (!m_lidar_2d_offset_initialized && m_lidar_2d_sh->has_data())
+      if (!m_lidar_2d_offset_initialized && m_lidar_2d_sh.hasMsg())
       {
         ROS_INFO_THROTTLE(1.0, "[Bumper]: Initializing 2D lidar horizontal angle offset");
 
-        const auto lidar_2d_msg = m_lidar_2d_sh->get_data();
+        const auto lidar_2d_msg = m_lidar_2d_sh.getMsg();
         initialize_lidar_2d_offset(lidar_2d_msg);
 
         if (m_lidar_2d_offset_initialized)
@@ -217,9 +216,9 @@ namespace mrs_bumper
         //}
 
         /* Check data from the front-facing realsense //{ */
-        if (m_depthmap_sh->new_data() && m_depth_cinfo_sh->has_data())
+        if (m_depthmap_sh.newMsg() && m_depth_cinfo_sh.hasMsg())
         {
-          cv_bridge::CvImagePtr source_msg = cv_bridge::toCvCopy(m_depthmap_sh->get_data(), std::string("16UC1"));
+          cv_bridge::CvImagePtr source_msg = cv_bridge::toCvCopy(m_depthmap_sh.getMsg(), std::string("16UC1"));
           if (!m_roi_initialized)
             initialize_roi(source_msg->image.cols, source_msg->image.rows);
           double obstacle_dist = find_obstacles_in_depthmap(source_msg);
@@ -244,9 +243,9 @@ namespace mrs_bumper
         //}
 
         /* Check data from the horizontal 2D lidar //{ */
-        if (m_lidar_2d_offset_initialized && m_lidar_2d_sh->new_data())
+        if (m_lidar_2d_offset_initialized && m_lidar_2d_sh.newMsg())
         {
-          sensor_msgs::LaserScan source_msg = *m_lidar_2d_sh->get_data();
+          sensor_msgs::LaserScan source_msg = *m_lidar_2d_sh.getMsg();
 
           /* std::vector<double> obstacle_distances = find_obstacles_in_horizontal_sectors(source_msg); */
           std::vector<double> obstacle_distances = find_obstacles_in_horizontal_sectors_robust(source_msg, m_lidar_scanner_filter_size);
@@ -273,10 +272,10 @@ namespace mrs_bumper
         //}
 
         /* Check data from the down-facing lidar //{ */
-        if (m_lidar_1d_down_sh->new_data())
+        if (m_lidar_1d_down_sh.newMsg())
         {
           // get the current obstacle distance
-          sensor_msgs::Range source_msg = *m_lidar_1d_down_sh->get_data();
+          sensor_msgs::Range source_msg = *m_lidar_1d_down_sh.getMsg();
           double obstacle_dist = source_msg.range;
           if (obstacle_dist <= source_msg.min_range || obstacle_dist >= source_msg.max_range)
             obstacle_dist = ObstacleSectors::OBSTACLE_NOT_DETECTED;
@@ -298,10 +297,10 @@ namespace mrs_bumper
         //}
 
         /* Check data from the up-facing lidar //{ */
-        if (m_lidar_1d_up_sh->new_data())
+        if (m_lidar_1d_up_sh.newMsg())
         {
           // get the current obstacle distance
-          sensor_msgs::Range source_msg = *m_lidar_1d_up_sh->get_data();
+          sensor_msgs::Range source_msg = *m_lidar_1d_up_sh.getMsg();
           double obstacle_dist = source_msg.range;
           if (obstacle_dist <= source_msg.min_range || obstacle_dist >= source_msg.max_range)
             obstacle_dist = ObstacleSectors::OBSTACLE_NOT_DETECTED;
@@ -338,24 +337,24 @@ namespace mrs_bumper
         /* check for fallback timeout, apply if neccessary //{ */
         /* if we got a first sensor message, but still no cinfo, remember the stamp (for fallback timeout) //{ */
 
-        if (!m_first_message_received && m_depthmap_sh->has_data())
+        if (!m_first_message_received && m_depthmap_sh.hasMsg())
         {
-          m_first_message_stamp = m_depthmap_sh->get_data()->header.stamp;
+          m_first_message_stamp = m_depthmap_sh.getMsg()->header.stamp;
           m_first_message_received = true;
         }
-        if (!m_first_message_received && m_lidar_2d_sh->has_data())
+        if (!m_first_message_received && m_lidar_2d_sh.hasMsg())
         {
-          m_first_message_stamp = m_lidar_2d_sh->get_data()->header.stamp;
+          m_first_message_stamp = m_lidar_2d_sh.getMsg()->header.stamp;
           m_first_message_received = true;
         }
-        if (!m_first_message_received && m_lidar_1d_down_sh->has_data())
+        if (!m_first_message_received && m_lidar_1d_down_sh.hasMsg())
         {
-          m_first_message_stamp = m_lidar_1d_down_sh->get_data()->header.stamp;
+          m_first_message_stamp = m_lidar_1d_down_sh.getMsg()->header.stamp;
           m_first_message_received = true;
         }
-        if (!m_first_message_received && m_lidar_1d_up_sh->has_data())
+        if (!m_first_message_received && m_lidar_1d_up_sh.hasMsg())
         {
-          m_first_message_stamp = m_lidar_1d_up_sh->get_data()->header.stamp;
+          m_first_message_stamp = m_lidar_1d_up_sh.getMsg()->header.stamp;
           m_first_message_received = true;
         }
 
@@ -402,11 +401,11 @@ namespace mrs_bumper
     /* ROS related variables (subscribers, timers etc.) //{ */
     std::unique_ptr<drmgr_t> m_drmgr_ptr;
 
-    mrs_lib::SubscribeHandlerPtr<sensor_msgs::Image> m_depthmap_sh;
-    mrs_lib::SubscribeHandlerPtr<sensor_msgs::CameraInfo> m_depth_cinfo_sh;
-    mrs_lib::SubscribeHandlerPtr<sensor_msgs::LaserScan> m_lidar_2d_sh;
-    mrs_lib::SubscribeHandlerPtr<sensor_msgs::Range> m_lidar_1d_down_sh;
-    mrs_lib::SubscribeHandlerPtr<sensor_msgs::Range> m_lidar_1d_up_sh;
+    mrs_lib::SubscribeHandler<sensor_msgs::Image> m_depthmap_sh;
+    mrs_lib::SubscribeHandler<sensor_msgs::CameraInfo> m_depth_cinfo_sh;
+    mrs_lib::SubscribeHandler<sensor_msgs::LaserScan> m_lidar_2d_sh;
+    mrs_lib::SubscribeHandler<sensor_msgs::Range> m_lidar_1d_down_sh;
+    mrs_lib::SubscribeHandler<sensor_msgs::Range> m_lidar_1d_up_sh;
 
     tf2_ros::Buffer m_tf_buffer;
     std::unique_ptr<tf2_ros::TransformListener> m_tf_listener_ptr;

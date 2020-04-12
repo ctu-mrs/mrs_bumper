@@ -43,9 +43,7 @@ int main(int argc, char** argv)
 
   /** Create publishers and subscribers //{**/
   // Initialize other subs and pubs
-  mrs_lib::SubscribeMgr smgr(nh);
-  const bool subs_time_consistent = false;
-  auto sh_hist = smgr.create_handler<mrs_msgs::Histogram, subs_time_consistent>("histogram", ros::Duration(5.0));
+  auto sh_hist = mrs_lib::SubscribeHandler<mrs_msgs::Histogram>({}, "histogram", ros::Duration(5.0));
 
   //}
 
@@ -64,9 +62,9 @@ int main(int argc, char** argv)
   {
     ros::spinOnce();
 
-    if (sh_hist->new_data())
+    if (sh_hist.newMsg())
     {
-      const mrs_msgs::Histogram hist_msg = *(sh_hist->get_data());
+      const mrs_msgs::Histogram hist_msg = *(sh_hist.getMsg());
       const int hr = 1000;
       const int hc = 1000;
       cv::Mat disp_im = cv::Mat::zeros(hr + bot_rows, hc + right_cols, CV_8UC3);
