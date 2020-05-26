@@ -35,5 +35,5 @@ lidar_scanner_filter_size: 5
 # These settings are used if Realsense camera info is not received after the timeout
 # duration has elapsed since receiving the first sensory message.
 fallback_timeout: 10.0 # seconds
-fallback_n_horizontal_sectors: 36
+fallback_n_horizontal_sectors: 8
 fallback_vertical_fov: !degrees 10.0
