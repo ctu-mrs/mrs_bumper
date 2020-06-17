@@ -7,6 +7,7 @@
   <arg name="debug" default="false" />
   <arg name="fcu_frame" default="$(arg UAV_NAME)/fcu" />
   <arg name="fcu_horizontal_frame" default="$(arg UAV_NAME)/fcu_untilted" />
+  <arg name="use_realsense" default="true" />
 
   <arg unless="$(arg debug)" name="launch_prefix" value=""/>
   <arg     if="$(arg debug)" name="launch_prefix" value="debug_roslaunch"/>
@@ -26,11 +27,11 @@
 
       <rosparam file="$(find mrs_bumper)/config/$(arg RUN_TYPE).yaml" />
 
-      <remap if="$(eval arg('RUN_TYPE') == 'simulation')" from="~depthmap_in" to="rs_d435/camera/depth/image_raw"/>
-      <remap if="$(eval arg('RUN_TYPE') == 'uav')" from="~depthmap_in" to="rs_d435/aligned_depth_to_color/image_raw"/>
+      <remap if="$(eval arg('RUN_TYPE') == 'simulation' and arg('use_realsense'))" from="~depthmap_in" to="rs_d435/camera/depth/image_raw"/>
+      <remap if="$(eval arg('RUN_TYPE') == 'uav' and arg('use_realsense'))" from="~depthmap_in" to="rs_d435/aligned_depth_to_color/image_raw"/>
 
-      <remap if="$(eval arg('RUN_TYPE') == 'simulation')" from="~depth_cinfo_in" to="rs_d435/camera/depth/camera_info"/>
-      <remap if="$(eval arg('RUN_TYPE') == 'uav')" from="~depth_cinfo_in" to="rs_d435/aligned_depth_to_color/camera_info"/>
+      <remap if="$(eval arg('RUN_TYPE') == 'simulation' and arg('use_realsense'))" from="~depth_cinfo_in" to="rs_d435/camera/depth/camera_info"/>
+      <remap if="$(eval arg('RUN_TYPE') == 'uav' and arg('use_realsense'))" from="~depth_cinfo_in" to="rs_d435/aligned_depth_to_color/camera_info"/>
 
       <remap if="$(eval arg('RUN_TYPE') == 'simulation')" from="~lidar_2d_in" to="rplidar/scan"/>
       <remap if="$(eval arg('RUN_TYPE') == 'uav')" from="~lidar_2d_in" to="rplidar/scan"/>
