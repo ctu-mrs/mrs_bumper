@@ -1,4 +1,4 @@
-# MRS Bumper [![Build Status](https://travis-ci.com/ctu-mrs/mrs_bumper.svg?branch=master)](https://travis-ci.com/ctu-mrs/mrs_bumper)
+# MRS Bumper [![Build Status](https://github.com/ctu-mrs/mrs_bumper/workflows/CI/badge.svg)](https://github.com/ctu-mrs/mrs_bumper/actions)
 # ![](.fig/bumper.jpg)
 
 * MRS bumper aggregates data from 1-D, 2-D lidars, and depth-camera images and creates a sector-based representation of the surroundings of a robot.
