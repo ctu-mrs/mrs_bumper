@@ -16,10 +16,17 @@
 #include <mrs_lib/param_loader.h>
 #include <mrs_lib/dynamic_reconfigure_mgr.h>
 #include <mrs_lib/subscribe_handler.h>
+#include <mrs_lib/timer.h>
 
 #include <mrs_bumper/BumperConfig.h>
 #include <mrs_msgs/ObstacleSectors.h>
 #include <mrs_msgs/Histogram.h>
+
+#if ROS_VERSION_MINIMUM(1, 15, 8)
+using Timer = mrs_lib::ThreadTimer;
+#else
+using Timer = mrs_lib::ROSTimer;
+#endif
 
 // shortcut type to the dynamic reconfigure manager template instance
 typedef mrs_lib::DynamicReconfigureMgr<mrs_bumper::BumperConfig> drmgr_t;
@@ -132,7 +139,7 @@ namespace mrs_bumper
       m_lidar_2d_offset_initialized = false;
       //}
 
-      m_main_loop_timer = nh.createTimer(ros::Rate(m_update_rate), &Bumper::main_loop, this);
+      m_main_loop_timer = Timer(nh, ros::Rate(m_update_rate), &Bumper::main_loop, this);
 
       std::cout << "----------------------------------------------------------" << std::endl;
     }
@@ -418,7 +425,7 @@ namespace mrs_bumper
     ros::Publisher m_processed_depthmap_pub;
     ros::Publisher m_depthmap_hist_pub;
 
-    ros::Timer m_main_loop_timer;
+    Timer m_main_loop_timer;
 
     std::string m_node_name;
     //}
