@@ -37,3 +37,6 @@ lidar_scanner_filter_size: 5
 fallback_timeout: 10.0 # seconds
 fallback_n_horizontal_sectors: 8
 fallback_vertical_fov: !degrees 10.0
+
+lidar3d_voxel_size: 0.1
+lidar3d_voxel_minpoints: 5

@@ -11,11 +11,22 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 
+#include <pcl_ros/point_cloud.h>
+#include <pcl_ros/transforms.h>
+#include <pcl_conversions/pcl_conversions.h>
+
+#include <pcl/common/common.h>
+#include <pcl/filters/voxel_grid.h>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+
 #include <boost/circular_buffer.hpp>
 
 #include <mrs_lib/param_loader.h>
 #include <mrs_lib/dynamic_reconfigure_mgr.h>
 #include <mrs_lib/subscribe_handler.h>
+#include <mrs_lib/transformer.h>
+#include <mrs_lib/vector_converter.h>
 
 #include <mrs_bumper/BumperConfig.h>
 #include <mrs_msgs/ObstacleSectors.h>
@@ -29,6 +40,10 @@ namespace mrs_bumper
 
   using ObstacleSectors = mrs_msgs::ObstacleSectors;
   using Histogram = mrs_msgs::Histogram;
+
+  using pt_t = pcl::PointXYZ;
+  using pc_t = pcl::PointCloud<pt_t>;
+  using vec3_t = Eigen::Vector3f;
 
   class Bumper : public nodelet::Nodelet
   {
@@ -44,6 +59,7 @@ namespace mrs_bumper
       mrs_lib::ParamLoader pl(nh, m_node_name);
       // LOAD STATIC PARAMETERS
       ROS_INFO("[Bumper]: Loading static parameters:");
+      const auto uav_name = pl.loadParam2<std::string>("uav_name");
       pl.loadParam("update_rate", m_update_rate, 10.0);
       pl.loadParam("unknown_pixel_value", m_unknown_pixel_value);
       pl.loadParam("frame_id", m_frame_id);
@@ -56,12 +72,16 @@ namespace mrs_bumper
       pl.loadParam("histogram_n_bins", m_hist_n_bins, 1000);
       pl.loadParam("histogram_quantile_area", m_hist_quantile_area, 200);
       pl.loadParam("max_depth", m_max_depth);
+
+      pl.loadParam("lidar3d_voxel_size", m_lidar3d_voxel_size);
+      pl.loadParam("lidar3d_voxel_minpoints", m_lidar3d_voxel_minpoints);
+
       pl.loadParam("lidar_scanner_filter_size", m_lidar_scanner_filter_size);
       pl.loadParam("depth_camera_offset", m_depth_camera_offset);
-      const double fallback_timeout = pl.loadParam2<double>("fallback_timeout", 0.0);
+      const auto fallback_timeout = pl.loadParam2<double>("fallback_timeout", 0.0);
       pl.loadParam("fallback_n_horizontal_sectors", m_fallback_n_horizontal_sectors, 0);
       pl.loadParam("fallback_vertical_fov", m_fallback_vertical_fov, 0.0);
-      const std::string path_to_mask = pl.loadParam2<std::string>("path_to_mask", std::string());
+      const auto path_to_mask = pl.loadParam2<std::string>("path_to_mask", std::string());
 
       // LOAD DYNAMIC PARAMETERS
       // CHECK LOADING STATUS
@@ -83,6 +103,7 @@ namespace mrs_bumper
 
       mrs_lib::construct_object(m_depthmap_sh, shopts, "depthmap_in");
       mrs_lib::construct_object(m_depth_cinfo_sh, shopts, "depth_cinfo_in");
+      mrs_lib::construct_object(m_lidar_3d_sh, shopts, "lidar_3d_in");
       mrs_lib::construct_object(m_lidar_2d_sh, shopts, "lidar_2d_in");
       mrs_lib::construct_object(m_lidar_1d_down_sh, shopts, "lidar_1d_down_in");
       mrs_lib::construct_object(m_lidar_1d_up_sh, shopts, "lidar_1d_up_in");
@@ -130,6 +151,9 @@ namespace mrs_bumper
       m_first_message_received = false;
       m_sectors_initialized = false;
       m_lidar_2d_offset_initialized = false;
+      m_untilted_frame_id = "/" + uav_name + "/fcu_untilted";
+
+      m_tfm = mrs_lib::Transformer(m_node_name, uav_name);
       //}
 
       m_main_loop_timer = nh.createTimer(ros::Rate(m_update_rate), &Bumper::main_loop, this);
@@ -275,6 +299,36 @@ namespace mrs_bumper
         }
         //}
 
+        /* Check data from the 3D lidar //{ */
+        if (m_lidar_3d_sh.newMsg())
+        {
+          const auto cloud = m_lidar_3d_sh.getMsg();
+
+          std::vector<double> obstacle_distances = find_obstacles_in_3dlidar_scan(cloud);
+          ros::Time msg_stamp;
+          pcl_conversions::fromPCL(cloud->header.stamp, msg_stamp);
+          for (unsigned sector_it = 0; sector_it < m_n_total_sectors; sector_it++)
+          {
+            // get the current obstacle distance
+            const double obstacle_dist = obstacle_distances.at(sector_it);
+
+            // check if an obstacle was detected (*obstacle_sure*)
+            bool obstacle_sure = !value_is_unknown(obstacle_dist);
+            auto& cur_value = obst_msg.sectors.at(sector_it);
+            auto& cur_sensor = obst_msg.sector_sensors.at(sector_it);
+            // If the previous obstacle information in this sector is unknown or a closer
+            // obstacle was detected by this sensor, update the information.
+            if (value_is_unknown(cur_value) || (obstacle_sure && obstacle_dist < cur_value))
+            {
+              cur_value = obstacle_dist;
+              cur_sensor = ObstacleSectors::SENSOR_LIDAR_3D;
+            }
+            if (obst_msg.header.stamp > msg_stamp)
+              obst_msg.header.stamp = msg_stamp;
+          }
+        }
+        //}
+
         /* Check data from the down-facing lidar //{ */
         if (m_lidar_1d_down_sh.newMsg())
         {
@@ -395,6 +449,8 @@ namespace mrs_bumper
     int m_hist_quantile_area;
     double m_max_depth;
     double m_lidar_scanner_filter_size;
+    int m_lidar3d_voxel_minpoints;
+    double m_lidar3d_voxel_size;
     double m_depth_camera_offset;
 
     ros::Duration m_fallback_timeout;
@@ -407,6 +463,7 @@ namespace mrs_bumper
 
     mrs_lib::SubscribeHandler<sensor_msgs::Image> m_depthmap_sh;
     mrs_lib::SubscribeHandler<sensor_msgs::CameraInfo> m_depth_cinfo_sh;
+    mrs_lib::SubscribeHandler<pc_t> m_lidar_3d_sh;
     mrs_lib::SubscribeHandler<sensor_msgs::LaserScan> m_lidar_2d_sh;
     mrs_lib::SubscribeHandler<sensor_msgs::Range> m_lidar_1d_down_sh;
     mrs_lib::SubscribeHandler<sensor_msgs::Range> m_lidar_1d_up_sh;
@@ -438,13 +495,18 @@ namespace mrs_bumper
     std::vector<boost::circular_buffer<double>> m_sector_filters;
     uint32_t m_n_total_sectors;
     double m_vertical_fov;
+    float m_vertical_halffov_sin;
     bool m_roi_initialized;
     ros::Time m_first_message_stamp;
     bool m_first_message_received;
     bool m_sectors_initialized;
     bool m_lidar_2d_offset_initialized;
     double m_lidar_2d_offset;
+
+    std::string m_untilted_frame_id;
     //}
+
+    mrs_lib::Transformer m_tfm;
 
   private:
     // --------------------------------------------------------------
@@ -513,6 +575,7 @@ namespace mrs_bumper
       m_horizontal_sector_ranges = initialize_ranges(n_horizontal_sectors);
       m_n_total_sectors = n_horizontal_sectors + 2;
       m_vertical_fov = vfov;
+      m_vertical_halffov_sin = std::sin(m_vertical_fov/2.0);
       update_filter_sizes();
       m_sectors_initialized = true;
     }
@@ -732,6 +795,81 @@ namespace mrs_bumper
         ret.push_back(min_range);
       }
       return ret;
+    }
+    //}
+
+    /* find_obstacles_in_3dlidar_scan() method //{ */
+    std::vector<double> find_obstacles_in_3dlidar_scan(const pc_t::ConstPtr& cloud_orig)
+    {
+      std::vector<double> ret(m_n_total_sectors, ObstacleSectors::OBSTACLE_NO_DATA);
+
+      // transform the pointcloud to the untilted frame
+      auto cloud_tfd_opt = m_tfm.transformSingle(m_untilted_frame_id, cloud_orig);
+      if (cloud_tfd_opt == std::nullopt)
+        return ret;
+      auto cloud = cloud_tfd_opt.value();
+
+      pcl::VoxelGrid<pt_t> vg;
+      vg.setInputCloud(cloud);
+      vg.setMinimumPointsNumberPerVoxel(m_lidar3d_voxel_minpoints);
+      vg.setLeafSize(m_lidar3d_voxel_size, m_lidar3d_voxel_size, m_lidar3d_voxel_size);
+      vg.filter(*cloud);
+
+      /* std::vector<std::vector<float>> sector_obstacles(m_n_total_sectors, std::vector<float>()); */
+      for (const auto& el : *cloud)
+      {
+        const vec3_t ray(el.x, el.y, el.z);
+        const auto [sector, dist] = sector_obstacle(ray);
+        // if the obstacle isn't in any sector, skip the point
+        if (sector < 0)
+          continue;
+        // otherwise, replace the minimum in the result list, if applicable
+        auto& cur = ret.at(sector);
+        if (cur == ObstacleSectors::OBSTACLE_NO_DATA || cur > dist)
+          cur = dist;
+        /* // otherwise, add it to the list of values in the respective sector */
+        /* sector_obstacles.at(sector).push_back(dist); */
+      }
+
+      /* for (size_t it = 0; it < m_n_total_sectors; it++) */
+      /* { */
+      /*   auto& sector_data = sector_obstacles.at(it); */
+      /*   // select the resulting obstacle as the corresponding quantile in the data */
+      /*   std::sort(std::begin(sector_data), std::end(sector_data)); */
+      /*   const size_t quant_it = std::round(m_lidar3d_sector_quantile*sector_data.size()); */
+      /*   ret.at(it) = sector_data.at(quant_it); */
+      /* } */
+      
+      return ret;
+    }
+    //}
+
+    /* sector_obstacle() method //{ */
+    // rel_point: point, relative to the UAV (in the untilted coordinate frame)
+    // returns: index of the sector in which the point lies and its distance
+    std::pair<int, float> sector_obstacle(const vec3_t& rel_point)
+    {
+      const auto dist = rel_point.norm();
+      const auto vert_sin = rel_point.z()/dist;
+      if (vert_sin > m_vertical_halffov_sin)
+      {
+        return {m_top_sector_idx, dist};
+      }
+      else if (vert_sin < -m_vertical_halffov_sin)
+      {
+        return {m_bottom_sector_idx, dist};
+      }
+      else
+      {
+        const auto hori_angle = std::atan2(rel_point.y(), rel_point.x());
+
+        for (size_t it = 0; it < m_n_horizontal_sectors; it++)
+        {
+          if (angle_in_range(hori_angle, m_horizontal_sector_ranges.at(it)))
+            return {it, dist};
+        }
+      }
+      return {ObstacleSectors::OBSTACLE_NO_DATA, ObstacleSectors::OBSTACLE_NO_DATA};
     }
     //}
 

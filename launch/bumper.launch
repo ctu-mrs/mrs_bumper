@@ -27,11 +27,14 @@
 
       <rosparam file="$(find mrs_bumper)/config/$(arg RUN_TYPE).yaml" />
 
-      <remap if="$(eval arg('RUN_TYPE') == 'simulation' and arg('use_realsense'))" from="~depthmap_in" to="rs_d435/camera/depth/image_raw"/>
+      <remap if="$(eval arg('RUN_TYPE') == 'simulation' and arg('use_realsense'))" from="~depthmap_in" to="rs_d435/aligned_depth_to_color/image_raw"/>
       <remap if="$(eval arg('RUN_TYPE') == 'uav' and arg('use_realsense'))" from="~depthmap_in" to="rs_d435/aligned_depth_to_color/image_raw"/>
 
-      <remap if="$(eval arg('RUN_TYPE') == 'simulation' and arg('use_realsense'))" from="~depth_cinfo_in" to="rs_d435/camera/depth/camera_info"/>
+      <remap if="$(eval arg('RUN_TYPE') == 'simulation' and arg('use_realsense'))" from="~depth_cinfo_in" to="rs_d435/aligned_depth_to_color/camera_info"/>
       <remap if="$(eval arg('RUN_TYPE') == 'uav' and arg('use_realsense'))" from="~depth_cinfo_in" to="rs_d435/aligned_depth_to_color/camera_info"/>
+
+      <remap if="$(eval arg('RUN_TYPE') == 'simulation')" from="~lidar_3d_in" to="os1_cloud_node/points"/>
+      <remap if="$(eval arg('RUN_TYPE') == 'uav')" from="~lidar_3d_in" to="os1_cloud_node/points"/>
 
       <remap if="$(eval arg('RUN_TYPE') == 'simulation')" from="~lidar_2d_in" to="rplidar/scan"/>
       <remap if="$(eval arg('RUN_TYPE') == 'uav')" from="~lidar_2d_in" to="rplidar/scan"/>

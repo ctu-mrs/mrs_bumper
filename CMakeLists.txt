@@ -14,13 +14,20 @@ find_package(catkin REQUIRED COMPONENTS
   cv_bridge
   image_transport
   image_geometry
+  pcl_ros
+  pcl_conversions
   mrs_lib
   mrs_msgs
 )
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
+add_definitions("-fdiagnostics-color=always -O3 -g -Wall")
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(OpenCV REQUIRED)
+
+find_package(PCL REQUIRED)
 
 generate_dynamic_reconfigure_options(
   config/Bumper.cfg
@@ -48,6 +55,7 @@ add_dependencies(Bumper
 target_link_libraries(Bumper
   ${catkin_LIBRARIES}
   ${OpenCV_LIBRARIES}
+  ${PCL_LIBRARIES}
 )
 
 add_executable(histogram_displayer src/histogram_displayer.cpp)
