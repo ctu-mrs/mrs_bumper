@@ -25,32 +25,28 @@
 
     <node pkg="nodelet" type="nodelet" name="bumper" args="$(arg nodelet_load)" output="screen" launch-prefix="$(arg launch_prefix)">
 
+      <!-- =========================== Parameters ========================== -->
       <rosparam file="$(find mrs_bumper)/config/$(arg RUN_TYPE).yaml" />
-
-      <remap if="$(eval arg('RUN_TYPE') == 'simulation' and arg('use_realsense'))" from="~depthmap_in" to="rs_d435/aligned_depth_to_color/image_raw"/>
-      <remap if="$(eval arg('RUN_TYPE') == 'uav' and arg('use_realsense'))" from="~depthmap_in" to="rs_d435/aligned_depth_to_color/image_raw"/>
-
-      <remap if="$(eval arg('RUN_TYPE') == 'simulation' and arg('use_realsense'))" from="~depth_cinfo_in" to="rs_d435/aligned_depth_to_color/camera_info"/>
-      <remap if="$(eval arg('RUN_TYPE') == 'uav' and arg('use_realsense'))" from="~depth_cinfo_in" to="rs_d435/aligned_depth_to_color/camera_info"/>
-
-      <remap if="$(eval arg('RUN_TYPE') == 'simulation')" from="~lidar_3d_in" to="os1_cloud_node/points"/>
-      <remap if="$(eval arg('RUN_TYPE') == 'uav')" from="~lidar_3d_in" to="os1_cloud_node/points"/>
-
-      <remap if="$(eval arg('RUN_TYPE') == 'simulation')" from="~lidar_2d_in" to="rplidar/scan"/>
-      <remap if="$(eval arg('RUN_TYPE') == 'uav')" from="~lidar_2d_in" to="rplidar/scan"/>
-
-      <remap if="$(eval arg('RUN_TYPE') == 'simulation')" from="~lidar_1d_down_in" to="garmin/range"/>
-      <remap if="$(eval arg('RUN_TYPE') == 'uav' and arg('PIXGARM'))" from="~lidar_1d_down_in" to="mavros/distance_sensor/garmin"/>
-      <remap if="$(eval arg('RUN_TYPE') == 'uav' and not arg('PIXGARM'))" from="~lidar_1d_down_in" to="garmin/range"/>
-
-      <remap if="$(eval arg('RUN_TYPE') == 'simulation')" from="~lidar_1d_up_in" to="garmin_up/range"/>
-      <remap if="$(eval arg('RUN_TYPE') == 'uav' and arg('PIXGARM'))" from="~lidar_1d_up_in" to="mavros/distance_sensor/garmin_up"/>
-      <remap if="$(eval arg('RUN_TYPE') == 'uav' and not arg('PIXGARM'))" from="~lidar_1d_up_in" to="garmin_up/range"/>
-
       <param name="uav_name" value="$(arg UAV_NAME)" />
       <param name="path_to_mask" value="$(arg mask_filename)" />
       <param name="frame_id" value="$(arg fcu_horizontal_frame)" />
 
+      <!-- ================ Laser rangefinder topics ================ -->
+      <remap if="$(eval arg('RUN_TYPE') == 'simulation')"                 from="~lidar1d_down_in" to="garmin/range"/>
+      <remap if="$(eval arg('RUN_TYPE') == 'uav' and arg('PIXGARM'))"     from="~lidar1d_down_in" to="mavros/distance_sensor/garmin"/>
+      <remap if="$(eval arg('RUN_TYPE') == 'uav' and not arg('PIXGARM'))" from="~lidar1d_down_in" to="garmin/range"/>
+
+      <remap if="$(eval arg('RUN_TYPE') == 'simulation')"                 from="~lidar1d_up_in" to="garmin_up/range"/>
+      <remap if="$(eval arg('RUN_TYPE') == 'uav' and arg('PIXGARM'))"     from="~lidar1d_up_in" to="mavros/distance_sensor/garmin_up"/>
+      <remap if="$(eval arg('RUN_TYPE') == 'uav' and not arg('PIXGARM'))" from="~lidar1d_up_in" to="garmin_up/range"/>
+
+      <!-- =================== Other input topics =================== -->
+      <remap from="~depthmap_in" to="rs_d435/aligned_depth_to_color/image_raw"/>
+      <remap from="~depth_cinfo_in" to="rs_d435/aligned_depth_to_color/camera_info"/>
+      <remap from="~lidar3d_in" to="os1_cloud_node/points"/>
+      <remap from="~lidar2d_in" to="rplidar/scan"/>
+
+      <!-- ====================== Output topics ===================== -->
       <remap from="~obstacle_sectors_out" to="~obstacle_sectors" />
 
     </node>

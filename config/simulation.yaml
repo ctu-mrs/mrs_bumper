@@ -1,46 +1,60 @@
-roi:
-  centering: true
-  height: 480
-
-# this value is used in the input depth map to indicate that
-# depth of the specific pixel is unknown
-unknown_pixel_value: 0
 # size of the median filter, used for each sector
 median_filter_size: 10
 # how often data from sensors are evaluated and the bumper topic published
 update_rate: 10
 
-# This is the offset of the depth camera to compensate its shift from the UAV center.
-# Its value is added to the obstacle distance, measured by the camera.
-depth_camera_offset: 0.3 # meters
-# maximal considered detection depth of the depth camera
-max_depth: 10.0 # meters
-# number of bins of the depthmap histogram
-histogram_n_bins: 100
-# minimal number of pixels with depth smaller or equal than the resulting obstacle distance
-histogram_quantile_area: 200
-
-# This is the length of the filter buffer, applied to 2D lidar scans when detecting
-# closest obstacle. A buffer of *lidar_scanner_filter_size* last measurements is kept
-# when sequentially going through the scan. If the maximal value from this buffer is
-# smaller than the minimal obstacle distance found in the current scan, the obstacle
-# distance is updated. This should filter out solitary false positives in the laser
-# scan (at least *lidar_scanner_filter_size* consecutive measurements have to be close
-# for an obstacle to be reported). For more details, see code (method
-# *find_obstacles_in_horizontal_sectors_robust*).
-lidar_scanner_filter_size: 5
-
 # Fallback settings in case Realsense is disconnected or something.
 # These settings are used if Realsense camera info is not received after the timeout
 # duration has elapsed since receiving the first sensory message.
-fallback_timeout: 1.0 # seconds
-fallback_n_horizontal_sectors: 8
-fallback_vertical_fov: !degrees 32
+fallback:
+  timeout: 1.0 # seconds
+  n_horizontal_sectors: 8
+  vertical_fov: !degrees 33.2 # 33.2 for Ouster OS1 Gen1
+
+# If available, the number of horizontal sectors and the vertical FOV are initialized from the depthmap camera info.
+depthmap:
+  # This region of interest will be extracted from the image
+  roi:
+    centering: true
+    height: 480
+    # y_offset: 0
+  # this value is used in the input depth map to indicate that
+  # depth of the specific pixel is unknown (0 for Realsense by default)
+  unknown_pixel_value: 0
+  # This is the offset of the depth camera to compensate its shift from the UAV center.
+  # Its value is added to the obstacle distance, measured by the camera.
+  camera_offset: 0.3 # meters
+  # maximal considered detection depth of the depth camera
+  max_depth: 10.0 # meters
+  # number of bins of the depthmap histogram
+  histogram_n_bins: 100
+  # minimal number of pixels with depth smaller or equal than the resulting obstacle distance
+  histogram_quantile_area: 200
+
+lidar2d:
+  # This is the length of the filter buffer, applied to 2D lidar scans when detecting
+  # closest obstacle. A buffer of *lidar2d/filter_size* last measurements is kept
+  # when sequentially going through the scan. If the maximal value from this buffer is
+  # smaller than the minimal obstacle distance found in the current scan, the obstacle
+  # distance is updated. This should filter out solitary false positives in the laser
+  # scan (at least *lidar2d/filter_size* consecutive measurements have to be close
+  # for an obstacle to be reported). For more details, see code (method
+  # *find_obstacles_in_horizontal_sectors_robust*).
+  filter_size: 5
 
 lidar3d:
+  # size of voxels for the VoxelGrid filter (points closer together than this are joined to one)
   voxel_size: 0.5
-  voxel_minpoints: 5
+  # minimal number of points in a voxel for it to be considered
+  voxel_minpoints: 15
+  # points within this box will be excluded (used to filter out points, belonging to the UAV)
   exclude_box:
     # offset of the box center relative to the sensor origin
-    offset: [0.09, 0.0, -0.5] # meters
+    offset: [0.0, 0.0, -0.25] # meters
     size: [2.0, 2.0, 1.0] # meters
+  # only points inside this box will be considered (used to filter out far and irrelevant points)
+  include_box:
+    # offset of the box center relative to the sensor origin
+    offset: [0.09, 0.0, -0.25] # meters
+    # set to [0, 0, 0] to include all points
+    size: [20.0, 20.0, 20.0] # meters
