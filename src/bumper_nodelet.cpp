@@ -1,3 +1,5 @@
+/* headers //{ */
+
 // clang: MatousFormat
 #include <image_transport/image_transport.h>
 #include <image_geometry/pinhole_camera_model.h>
@@ -11,14 +13,15 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 
+#include <pcl/common/common.h>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
 #include <pcl_ros/point_cloud.h>
 #include <pcl_ros/transforms.h>
 #include <pcl_conversions/pcl_conversions.h>
 
-#include <pcl/common/common.h>
 #include <pcl/filters/voxel_grid.h>
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
+#include <pcl/filters/crop_box.h>
 
 #include <boost/circular_buffer.hpp>
 
@@ -26,7 +29,7 @@
 #include <mrs_lib/dynamic_reconfigure_mgr.h>
 #include <mrs_lib/subscribe_handler.h>
 #include <mrs_lib/transformer.h>
-#include <mrs_lib/vector_converter.h>
+/* #include <mrs_lib/vector_converter.h> */
 
 #include <mrs_bumper/BumperConfig.h>
 #include <mrs_msgs/ObstacleSectors.h>
@@ -34,6 +37,8 @@
 
 // shortcut type to the dynamic reconfigure manager template instance
 typedef mrs_lib::DynamicReconfigureMgr<mrs_bumper::BumperConfig> drmgr_t;
+
+//}
 
 namespace mrs_bumper
 {
@@ -73,8 +78,10 @@ namespace mrs_bumper
       pl.loadParam("histogram_quantile_area", m_hist_quantile_area, 200);
       pl.loadParam("max_depth", m_max_depth);
 
-      pl.loadParam("lidar3d_voxel_size", m_lidar3d_voxel_size);
-      pl.loadParam("lidar3d_voxel_minpoints", m_lidar3d_voxel_minpoints);
+      pl.loadParam("lidar3d/voxel_size", m_lidar3d_voxel_size);
+      pl.loadParam("lidar3d/voxel_minpoints", m_lidar3d_voxel_minpoints);
+      pl.loadMatrixStatic("lidar3d/exclude_box/offset", m_lidar3d_exclude_box_offset);
+      pl.loadMatrixStatic("lidar3d/exclude_box/size", m_lidar3d_exclude_box_size);
 
       pl.loadParam("lidar_scanner_filter_size", m_lidar_scanner_filter_size);
       pl.loadParam("depth_camera_offset", m_depth_camera_offset);
@@ -112,6 +119,7 @@ namespace mrs_bumper
       m_obstacles_pub = nh.advertise<ObstacleSectors>("obstacle_sectors", 1);
       m_processed_depthmap_pub = nh.advertise<sensor_msgs::Image>("processed_depthmap", 1);
       m_depthmap_hist_pub = nh.advertise<Histogram>("depthmap_histogram", 1);
+      m_lidar3d_processed = nh.advertise<sensor_msgs::PointCloud2>("lidar3d_processed", 1);
 
       m_tf_listener_ptr = std::make_unique<tf2_ros::TransformListener>(m_tf_buffer);
       //}
@@ -151,7 +159,7 @@ namespace mrs_bumper
       m_first_message_received = false;
       m_sectors_initialized = false;
       m_lidar_2d_offset_initialized = false;
-      m_untilted_frame_id = "/" + uav_name + "/fcu_untilted";
+      m_untilted_frame_id = uav_name + "/fcu_untilted";
 
       m_tfm = mrs_lib::Transformer(m_node_name, uav_name);
       //}
@@ -304,7 +312,7 @@ namespace mrs_bumper
         {
           const auto cloud = m_lidar_3d_sh.getMsg();
 
-          std::vector<double> obstacle_distances = find_obstacles_in_3dlidar_scan(cloud);
+          std::vector<double> obstacle_distances = find_obstacles_pointcloud(cloud);
           ros::Time msg_stamp;
           pcl_conversions::fromPCL(cloud->header.stamp, msg_stamp);
           for (unsigned sector_it = 0; sector_it < m_n_total_sectors; sector_it++)
@@ -448,10 +456,14 @@ namespace mrs_bumper
     int m_hist_n_bins;
     int m_hist_quantile_area;
     double m_max_depth;
+    double m_depth_camera_offset;
+
     double m_lidar_scanner_filter_size;
+
     int m_lidar3d_voxel_minpoints;
     double m_lidar3d_voxel_size;
-    double m_depth_camera_offset;
+    Eigen::Vector3d m_lidar3d_exclude_box_offset;
+    Eigen::Vector3d m_lidar3d_exclude_box_size;
 
     ros::Duration m_fallback_timeout;
     int m_fallback_n_horizontal_sectors;
@@ -474,6 +486,7 @@ namespace mrs_bumper
     ros::Publisher m_obstacles_pub;
     ros::Publisher m_processed_depthmap_pub;
     ros::Publisher m_depthmap_hist_pub;
+    ros::Publisher m_lidar3d_processed;
 
     ros::Timer m_main_loop_timer;
 
@@ -798,22 +811,49 @@ namespace mrs_bumper
     }
     //}
 
-    /* find_obstacles_in_3dlidar_scan() method //{ */
-    std::vector<double> find_obstacles_in_3dlidar_scan(const pc_t::ConstPtr& cloud_orig)
+    /* find_obstacles_pointcloud() method //{ */
+    std::vector<double> find_obstacles_pointcloud(const pc_t::ConstPtr& cloud_orig)
     {
       std::vector<double> ret(m_n_total_sectors, ObstacleSectors::OBSTACLE_NO_DATA);
 
+      auto cloud = boost::make_shared<pc_t>();
+
+      /* reduce the number of points using VoxelGrid (output to cloud) //{ */
+
+      {
+        pcl::VoxelGrid<pt_t> vg;
+        vg.setInputCloud(cloud_orig);
+        vg.setMinimumPointsNumberPerVoxel(m_lidar3d_voxel_minpoints);
+        vg.setLeafSize(m_lidar3d_voxel_size, m_lidar3d_voxel_size, m_lidar3d_voxel_size);
+        vg.filter(*cloud);
+      }
+      
+      //}
+
+      /* crop out points, belonging to the UAV //{ */
+      
+      {
+        const Eigen::Vector3d box_point1 = m_lidar3d_exclude_box_offset + m_lidar3d_exclude_box_size/2.0;
+        const Eigen::Vector3d box_point2 = m_lidar3d_exclude_box_offset - m_lidar3d_exclude_box_size/2.0;
+        const Eigen::Vector4f bpt1(box_point1.x(), box_point1.y(), box_point1.z(), 1.0f);
+        const Eigen::Vector4f bpt2(box_point2.x(), box_point2.y(), box_point2.z(), 1.0f);
+        pcl::CropBox<pt_t> cb;
+        cb.setMax(bpt1);
+        cb.setMin(bpt2);
+        cb.setInputCloud(cloud_orig);
+        cb.setNegative(true);
+        cb.filter(*cloud);
+      }
+      
+      //}
+
+      m_lidar3d_processed.publish(cloud);
+
       // transform the pointcloud to the untilted frame
-      auto cloud_tfd_opt = m_tfm.transformSingle(m_untilted_frame_id, cloud_orig);
+      auto cloud_tfd_opt = m_tfm.transformSingle(m_untilted_frame_id, cloud);
       if (cloud_tfd_opt == std::nullopt)
         return ret;
-      auto cloud = cloud_tfd_opt.value();
-
-      pcl::VoxelGrid<pt_t> vg;
-      vg.setInputCloud(cloud);
-      vg.setMinimumPointsNumberPerVoxel(m_lidar3d_voxel_minpoints);
-      vg.setLeafSize(m_lidar3d_voxel_size, m_lidar3d_voxel_size, m_lidar3d_voxel_size);
-      vg.filter(*cloud);
+      cloud = cloud_tfd_opt.value();
 
       /* std::vector<std::vector<float>> sector_obstacles(m_n_total_sectors, std::vector<float>()); */
       for (const auto& el : *cloud)
