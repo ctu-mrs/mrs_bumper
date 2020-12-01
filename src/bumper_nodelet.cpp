@@ -108,7 +108,6 @@ namespace mrs_bumper
       mrs_lib::SubscribeHandlerOptions shopts;
       shopts.nh = nh;
       shopts.node_name = "Bumper";
-      shopts.no_message_timeout = ros::Duration(5.0);
 
       mrs_lib::construct_object(m_depthmap_sh, shopts, "depthmap_in");
       mrs_lib::construct_object(m_depth_cinfo_sh, shopts, "depth_cinfo_in");
@@ -174,14 +173,16 @@ namespace mrs_bumper
     /* main_loop() method //{ */
     void main_loop([[maybe_unused]] const ros::TimerEvent& evt)
     {
+      /* initialize some stuff, if possible //{ */
+      
       /* Initialize number of horizontal sectors etc from camera info message //{ */
       if (!m_sectors_initialized && m_depth_cinfo_sh.hasMsg())
       {
         ROS_INFO("[Bumper]: Processing camera info message to initialize sectors");
-
+      
         const auto cinfo = m_depth_cinfo_sh.getMsg();
         initialize_roi(cinfo->width, cinfo->height);
-
+      
         const double w = m_depthmap_roi.width;
         const double h = m_depthmap_roi.height;
         const double fx = cinfo->K[0];
@@ -190,29 +191,31 @@ namespace mrs_bumper
         const double vertical_fov = std::atan2(h / 2.0, fy) * 2.0;
         const int n_horizontal_sectors = std::ceil(2.0 * M_PI / horizontal_fov);
         initialize_sectors(n_horizontal_sectors, vertical_fov);
-
+      
         ROS_INFO("[Bumper]: Depth camera horizontal FOV: %.1fdeg", horizontal_fov / M_PI * 180.0);
         ROS_INFO("[Bumper]: Depth camera vertical FOV: %.1fdeg", vertical_fov / M_PI * 180.0);
         ROS_INFO("[Bumper]: Number of horizontal sectors: %d", m_n_horizontal_sectors);
       }
       //}
-
+      
       /* Initialize horizontal angle offset of 2D lidar from a new message //{ */
       if (!m_lidar2d_offset_initialized && m_lidar2d_sh.hasMsg())
       {
         ROS_INFO_THROTTLE(1.0, "[Bumper]: Initializing 2D lidar horizontal angle offset");
-
+      
         const auto lidar2d_msg = m_lidar2d_sh.getMsg();
         initialize_lidar2d_offset(lidar2d_msg);
-
+      
         if (m_lidar2d_offset_initialized)
           ROS_INFO("[Bumper]: 2D lidar horizontal angle offset: %.2f", m_lidar2d_offset);
         else
           ROS_WARN_THROTTLE(1.0, "[Bumper]: 2D lidar horizontal angle offset initialization failed, will retry.");
       }
       //}
+      
+      //}
 
-      /* Apply possible changes from dynamic reconfigure //{ */
+      /* apply changes from dynamic reconfigure //{ */
       if (m_median_filter_size != m_drmgr_ptr->config.median_filter_size)
       {
         if (m_drmgr_ptr->config.median_filter_size > 0)
@@ -240,165 +243,126 @@ namespace mrs_bumper
 
       if (m_sectors_initialized)
       {
-        /* process any new messages, publish new obstacles message //{ */
+        std::vector<std::tuple<int, std::vector<double>, ros::Time>> sensors_sectors;
+        std::vector<std::string> sensors_topics;
 
-        /* Prepare the ObstacleSectors message to be published //{ */
-        ObstacleSectors obst_msg;
-        obst_msg.header.frame_id = m_frame_id;
-        obst_msg.header.stamp = ros::Time::now();
-        obst_msg.n_horizontal_sectors = m_n_horizontal_sectors;
-        obst_msg.sectors_vertical_fov = m_vertical_fov;
-        obst_msg.sectors.resize(m_n_total_sectors, ObstacleSectors::OBSTACLE_NO_DATA);
-        obst_msg.sector_sensors.resize(m_n_total_sectors, ObstacleSectors::SENSOR_NONE);
-        //}
+        /* process any new messages from sensors //{ */
 
-        /* Check data from the front-facing realsense //{ */
+        // Check data from the depthmap image
         if (m_depthmap_sh.newMsg() && m_depth_cinfo_sh.hasMsg())
         {
           cv_bridge::CvImagePtr source_msg = cv_bridge::toCvCopy(m_depthmap_sh.getMsg(), std::string("16UC1"));
           if (!m_depthmap_roi_initialized)
             initialize_roi(source_msg->image.cols, source_msg->image.rows);
-          double obstacle_dist = find_obstacles_in_depthmap(source_msg);
-
-          // check if an obstacle was detected (*obstacle_sure*)
-          bool obstacle_sure = !value_is_unknown(obstacle_dist);
-          if (obstacle_sure)
-            obstacle_dist += m_depthmap_camera_offset;
-          auto& cur_value = obst_msg.sectors.at(0);
-          auto& cur_sensor = obst_msg.sector_sensors.at(0);
-          // If the previous obstacle information in this sector is unknown or a closer
-          // obstacle was detected by this sensor, update the information.
-          // TODO: fix the logic here
-          if (value_is_unknown(cur_value) || (obstacle_sure && obstacle_dist < cur_value))
-          {
-            cur_value = obstacle_dist;
-            cur_sensor = ObstacleSectors::SENSOR_DEPTH;
-          }
-          if (obst_msg.header.stamp > source_msg->header.stamp)
-            obst_msg.header.stamp = source_msg->header.stamp;
+          const auto obstacle_sectors = find_obstacles_in_depthmap(source_msg);
+          sensors_sectors.push_back({ObstacleSectors::SENSOR_DEPTH, obstacle_sectors, source_msg->header.stamp});
+          sensors_topics.push_back(m_depthmap_sh.topicName());
         }
-        //}
 
-        /* Check data from the horizontal 2D lidar //{ */
-        if (m_lidar2d_offset_initialized && m_lidar2d_sh.newMsg())
-        {
-          sensor_msgs::LaserScan source_msg = *m_lidar2d_sh.getMsg();
-
-          /* std::vector<double> obstacle_distances = find_obstacles_in_horizontal_sectors(source_msg); */
-          std::vector<double> obstacle_distances = find_obstacles_in_horizontal_sectors_robust(source_msg, m_lidar2d_filter_size);
-          for (unsigned sector_it = 0; sector_it < m_n_horizontal_sectors; sector_it++)
-          {
-            // get the current obstacle distance
-            const double obstacle_dist = obstacle_distances.at(sector_it);
-
-            // check if an obstacle was detected (*obstacle_sure*)
-            bool obstacle_sure = !value_is_unknown(obstacle_dist);
-            auto& cur_value = obst_msg.sectors.at(sector_it);
-            auto& cur_sensor = obst_msg.sector_sensors.at(sector_it);
-            // If the previous obstacle information in this sector is unknown or a closer
-            // obstacle was detected by this sensor, update the information.
-            if (value_is_unknown(cur_value) || (obstacle_sure && obstacle_dist < cur_value))
-            {
-              cur_value = obstacle_dist;
-              cur_sensor = ObstacleSectors::SENSOR_LIDAR2D;
-            }
-            if (obst_msg.header.stamp > source_msg.header.stamp)
-              obst_msg.header.stamp = source_msg.header.stamp;
-          }
-        }
-        //}
-
-        /* Check data from the 3D lidar //{ */
+        // Check data from the 3D lidar
         if (m_lidar3d_sh.newMsg())
         {
           const auto cloud = m_lidar3d_sh.getMsg();
-
-          std::vector<double> obstacle_distances = find_obstacles_pointcloud(cloud);
+          std::vector<double> obstacle_sectors = find_obstacles_pointcloud(cloud);
           ros::Time msg_stamp;
           pcl_conversions::fromPCL(cloud->header.stamp, msg_stamp);
-          for (unsigned sector_it = 0; sector_it < m_n_total_sectors; sector_it++)
-          {
-            // get the current obstacle distance
-            const double obstacle_dist = obstacle_distances.at(sector_it);
-
-            // check if an obstacle was detected (*obstacle_sure*)
-            bool obstacle_sure = !value_is_unknown(obstacle_dist);
-            auto& cur_value = obst_msg.sectors.at(sector_it);
-            auto& cur_sensor = obst_msg.sector_sensors.at(sector_it);
-            // If the previous obstacle information in this sector is unknown or a closer
-            // obstacle was detected by this sensor, update the information.
-            if (value_is_unknown(cur_value) || (obstacle_sure && obstacle_dist < cur_value))
-            {
-              cur_value = obstacle_dist;
-              cur_sensor = ObstacleSectors::SENSOR_LIDAR3D;
-            }
-            if (obst_msg.header.stamp > msg_stamp)
-              obst_msg.header.stamp = msg_stamp;
-          }
+          sensors_sectors.push_back({ObstacleSectors::SENSOR_LIDAR3D, obstacle_sectors, msg_stamp});
+          sensors_topics.push_back(m_lidar3d_sh.topicName());
         }
-        //}
 
-        /* Check data from the down-facing lidar //{ */
+        // Check data from the horizontal 2D lidar
+        if (m_lidar2d_offset_initialized && m_lidar2d_sh.newMsg())
+        {
+          const auto msg = m_lidar2d_sh.getMsg();
+          std::vector<double> obstacle_sectors = find_obstacles_in_horizontal_sectors_robust(msg);
+          sensors_sectors.push_back({ObstacleSectors::SENSOR_LIDAR2D, obstacle_sectors, msg->header.stamp});
+          sensors_topics.push_back(m_lidar2d_sh.topicName());
+        }
+
+        // Check data from the down-facing lidar
         if (m_lidar1d_down_sh.newMsg())
         {
-          // get the current obstacle distance
-          sensor_msgs::Range source_msg = *m_lidar1d_down_sh.getMsg();
-          double obstacle_dist = source_msg.range;
-          if (obstacle_dist <= source_msg.min_range || obstacle_dist >= source_msg.max_range)
-            obstacle_dist = ObstacleSectors::OBSTACLE_NOT_DETECTED;
-
-          // check if an obstacle was detected (*obstacle_sure*)
-          bool obstacle_sure = !value_is_unknown(obstacle_dist);
-          auto& cur_value = obst_msg.sectors.at(m_bottom_sector_idx);
-          auto& cur_sensor = obst_msg.sector_sensors.at(m_bottom_sector_idx);
-          // If the previous obstacle information in this sector is unknown or a closer
-          // obstacle was detected by this sensor, update the information.
-          if (value_is_unknown(cur_value) || (obstacle_sure && obstacle_dist < cur_value))
-          {
-            cur_value = obstacle_dist;
-            cur_sensor = ObstacleSectors::SENSOR_LIDAR1D;
-          }
-          if (obst_msg.header.stamp > source_msg.header.stamp)
-            obst_msg.header.stamp = source_msg.header.stamp;
+          const auto msg = m_lidar1d_down_sh.getMsg();
+          std::vector<double> obstacle_sectors = find_obstacles_lidar1d(msg, m_bottom_sector_idx);
+          sensors_sectors.push_back({ObstacleSectors::SENSOR_LIDAR1D, obstacle_sectors, msg->header.stamp});
+          sensors_topics.push_back(m_lidar1d_down_sh.topicName());
         }
-        //}
 
-        /* Check data from the up-facing lidar //{ */
-        if (m_lidar1d_up_sh.newMsg())
+        // Check data from the up-facing lidar
+        if (m_lidar1d_down_sh.newMsg())
         {
-          // get the current obstacle distance
-          sensor_msgs::Range source_msg = *m_lidar1d_up_sh.getMsg();
-          double obstacle_dist = source_msg.range;
-          if (obstacle_dist <= source_msg.min_range || obstacle_dist >= source_msg.max_range)
-            obstacle_dist = ObstacleSectors::OBSTACLE_NOT_DETECTED;
+          const auto msg = m_lidar1d_up_sh.getMsg();
+          std::vector<double> obstacle_sectors = find_obstacles_lidar1d(msg, m_top_sector_idx);
+          sensors_sectors.push_back({ObstacleSectors::SENSOR_LIDAR1D, obstacle_sectors, msg->header.stamp});
+          sensors_topics.push_back(m_lidar1d_up_sh.topicName());
+        }
 
-          // check if an obstacle was detected (*obstacle_sure*)
-          bool obstacle_sure = !value_is_unknown(obstacle_dist);
-          auto& cur_value = obst_msg.sectors.at(m_top_sector_idx);
-          auto& cur_sensor = obst_msg.sector_sensors.at(m_top_sector_idx);
-          // If the previous obstacle information in this sector is unknown or a closer
-          // obstacle was detected by this sensor, update the information.
-          if (value_is_unknown(cur_value) || (obstacle_sure && obstacle_dist < cur_value))
+        //}
+
+        std::vector<double> res_obstacles(m_n_total_sectors, ObstacleSectors::OBSTACLE_NO_DATA);
+        std::vector<int8_t> res_sensors(m_n_total_sectors, ObstacleSectors::SENSOR_NONE);
+        ros::Time res_stamp = ros::Time::now();
+        /* put the resuls from different sensors together //{ */
+        
+        for (const auto& sensor_sectors : sensors_sectors)
+        {
+          const auto [sensor, sectors, stamp] = sensor_sectors;
+          for (size_t sect_it = 0; sect_it < m_n_total_sectors; sect_it++)
           {
-            cur_value = obstacle_dist;
-            cur_sensor = ObstacleSectors::SENSOR_LIDAR1D;
+            const auto obstacle_dist = sectors.at(sect_it);
+            // check if an obstacle was detected (*obstacle_sure*)
+            const auto obstacle_unknown = obstacle_dist == ObstacleSectors::OBSTACLE_NO_DATA;
+            auto& cur_value = res_obstacles.at(sect_it);
+            auto& cur_sensor = res_sensors.at(sect_it);
+            // If the previous obstacle information in this sector is unknown or a closer
+            // obstacle was detected by this sensor, update the information.
+            if (cur_sensor == ObstacleSectors::SENSOR_NONE || (cur_value > obstacle_dist && !obstacle_unknown))
+            {
+              cur_value = obstacle_dist;
+              cur_sensor = sensor;
+              if (res_stamp > stamp)
+                res_stamp = stamp;
+            }
           }
-          if (obst_msg.header.stamp > source_msg.header.stamp)
-            obst_msg.header.stamp = source_msg.header.stamp;
+        }
+        
+        //}
+
+        // filter the obstacles using a median filter
+        res_obstacles = filter_sectors(res_obstacles);
+
+        /* Prepare and publish the ObstacleSectors message to be published //{ */
+        {
+          ObstacleSectors obst_msg;
+          obst_msg.header.frame_id = m_frame_id;
+          obst_msg.header.stamp = res_stamp;
+          obst_msg.n_horizontal_sectors = m_n_horizontal_sectors;
+          obst_msg.sectors_vertical_fov = m_vertical_fov;
+          obst_msg.sectors = res_obstacles;
+          obst_msg.sector_sensors = res_sensors;
+          m_obstacles_pub.publish(obst_msg);
         }
         //}
 
-        /* filter the obstacle distances //{ */
-
-        obst_msg.sectors = filter_sectors(obst_msg.sectors);
-
-        //}
-
-        /* Publish the ObstacleSectors message //{ */
-        m_obstacles_pub.publish(obst_msg);
-        //}
-
-        //}
+        // print out some info to the console
+        std::vector<std::string> used_sensors;
+        for (const auto& el : sensors_sectors)
+        {
+          const auto sensor = std::get<0>(el);
+          switch (sensor)
+          {
+            case ObstacleSectors::SENSOR_NONE:
+              used_sensors.push_back("invalid sensor"); break;
+            case ObstacleSectors::SENSOR_DEPTH:
+              used_sensors.push_back("depthmap"); break;
+            case ObstacleSectors::SENSOR_LIDAR1D:
+              used_sensors.push_back("LiDAR 1D"); break;
+            case ObstacleSectors::SENSOR_LIDAR2D:
+              used_sensors.push_back("LiDAR 2D"); break;
+            case ObstacleSectors::SENSOR_LIDAR3D:
+              used_sensors.push_back("LiDAR 3D"); break;
+          }
+        }
       } else
       {
         /* check for fallback timeout, apply if neccessary //{ */
@@ -633,8 +597,10 @@ namespace mrs_bumper
     //}
 
     /* find_obstacles_in_depthmap() method //{ */
-    double find_obstacles_in_depthmap(cv_bridge::CvImagePtr source_msg)
+    std::vector<double> find_obstacles_in_depthmap(cv_bridge::CvImagePtr source_msg)
     {
+      std::vector<double> ret(m_n_total_sectors, ObstacleSectors::OBSTACLE_NO_DATA);
+
       /* Apply ROI //{ */
       cv::Rect roi(m_depthmap_roi.x_offset, m_depthmap_roi.y_offset, m_depthmap_roi.width, m_depthmap_roi.height);
       source_msg->image = source_msg->image(roi);
@@ -717,7 +683,8 @@ namespace mrs_bumper
         //}
       }
 
-      return obstacle_dist;
+      ret.at(0) = obstacle_dist;
+      return ret;
     }
     //}
 
@@ -860,6 +827,20 @@ namespace mrs_bumper
     }
     //}
 
+    /* find_obstacles_lidar1d() method //{ */
+    std::vector<double> find_obstacles_lidar1d(const sensor_msgs::Range::ConstPtr& msg, const int sector)
+    {
+      std::vector<double> ret(m_n_total_sectors, ObstacleSectors::OBSTACLE_NO_DATA);
+
+      double obstacle_dist = msg->range;
+      if (obstacle_dist <= msg->min_range || obstacle_dist >= msg->max_range)
+        obstacle_dist = ObstacleSectors::OBSTACLE_NOT_DETECTED;
+      ret.at(sector) = obstacle_dist;
+      
+      return ret;
+    }
+    //}
+
     /* sector_obstacle() method //{ */
     // rel_point: point, relative to the UAV (in the untilted coordinate frame)
     // returns: index of the sector in which the point lies and its distance
@@ -901,20 +882,21 @@ namespace mrs_bumper
       return max;
     }
 
-    std::vector<double> find_obstacles_in_horizontal_sectors_robust(const sensor_msgs::LaserScan& scan_msg, const unsigned buffer_length)
+    std::vector<double> find_obstacles_in_horizontal_sectors_robust(const sensor_msgs::LaserScan::ConstPtr& scan_msg)
     {
-      std::vector<double> ret;
-      ret.reserve(m_n_horizontal_sectors);
+      std::vector<double> ret(m_n_total_sectors, ObstacleSectors::OBSTACLE_NO_DATA);
+      const auto buffer_length = m_lidar2d_filter_size;
       // check minimal obstacle distance for each horizontal sector
-      for (const auto& cur_angle_range : m_horizontal_sector_ranges)
+      for (size_t it = 0; it < m_n_total_sectors; it++)
       {
+        const auto& cur_angle_range = m_horizontal_sector_ranges.at(it);
         double min_range = std::numeric_limits<double>::max();
         // buffer of the last *buffer_length* measurements
         boost::circular_buffer<double> buffer(buffer_length);
-        for (unsigned ray_it = 0; ray_it < scan_msg.ranges.size(); ray_it++)
+        for (unsigned ray_it = 0; ray_it < scan_msg->ranges.size(); ray_it++)
         {
-          const double ray_range = scan_msg.ranges.at(ray_it) + buffer_length / 2 * scan_msg.angle_increment;
-          const double ray_angle = scan_msg.angle_min + ray_it * scan_msg.angle_increment + m_lidar2d_offset - buffer_length / 2 * scan_msg.angle_increment;
+          const double ray_range = scan_msg->ranges.at(ray_it) + buffer_length / 2 * scan_msg->angle_increment;
+          const double ray_angle = scan_msg->angle_min + ray_it * scan_msg->angle_increment + m_lidar2d_offset - buffer_length / 2 * scan_msg->angle_increment;
           // check if the ray is in the current horizontal sector
           if (angle_in_range(ray_angle, cur_angle_range))
           {
@@ -928,9 +910,9 @@ namespace mrs_bumper
               min_range = cur_max_range;
           }
         }
-        if (min_range < scan_msg.range_min || min_range > scan_msg.range_max)
+        if (min_range < scan_msg->range_min || min_range > scan_msg->range_max)
           min_range = ObstacleSectors::OBSTACLE_NOT_DETECTED;
-        ret.push_back(min_range);
+        ret.at(it) = min_range;
       }
       return ret;
     }
