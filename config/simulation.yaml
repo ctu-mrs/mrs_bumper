@@ -9,7 +9,7 @@ update_rate: 10
 fallback:
   timeout: 1.0 # seconds
   n_horizontal_sectors: 8
-  vertical_fov: !degrees 33.2 # 33.2 for Ouster OS1 Gen1
+  vertical_fov: !degrees 60
 
 # If available, the number of horizontal sectors and the vertical FOV are initialized from the depthmap camera info.
 depthmap:
