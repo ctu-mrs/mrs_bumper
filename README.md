@@ -1,7 +1,7 @@
 # MRS Bumper
 # ![](.fig/bumper.jpg)
 
-| Build status | [![Build Status](https://github.com/ctu-mrs/mrs_bumper/workflows/Melodic/badge.svg)](https://github.com/ctu-mrs/mrs_bumper/actions) | [![Build Status](https://github.com/ctu-mrs/mrs_bumper/workflows/Noetic/badge.svg)](https://github.com/ctu-mrs/mrs_simulation/actions) |
+| Build status | [![Build Status](https://github.com/ctu-mrs/mrs_bumper/workflows/Melodic/badge.svg)](https://github.com/ctu-mrs/mrs_bumper/actions) | [![Build Status](https://github.com/ctu-mrs/mrs_bumper/workflows/Noetic/badge.svg)](https://github.com/ctu-mrs/mrs_bumper/actions) |
 |--------------|-------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------|
 
 * MRS bumper aggregates data from 1-D, 2-D lidars, and depth-camera images and creates a sector-based representation of the surroundings of a robot.
