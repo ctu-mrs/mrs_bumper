@@ -632,7 +632,7 @@ namespace mrs_bumper
       std::vector<double> ret(m_n_total_sectors, ObstacleSectors::OBSTACLE_NO_DATA);
       const auto buffer_length = m_lidar2d_filter_size;
       // check minimal obstacle distance for each horizontal sector
-      for (size_t it = 0; it < m_n_total_sectors; it++)
+      for (size_t it = 0; it < m_n_horizontal_sectors; it++)
       {
         const auto& cur_angle_range = m_horizontal_sector_ranges.at(it);
         double min_range = std::numeric_limits<double>::max();
