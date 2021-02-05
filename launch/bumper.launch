@@ -43,7 +43,7 @@
       <!-- =================== Other input topics =================== -->
       <remap from="~depthmap_in" to="rs_d435/aligned_depth_to_color/image_raw"/>
       <remap from="~depth_cinfo_in" to="rs_d435/aligned_depth_to_color/camera_info"/>
-      <remap from="~lidar3d_in" to="os1_cloud_node/points"/>
+      <remap from="~lidar3d_in" to="os_cloud_nodelet/points_processed"/>
       <remap from="~lidar2d_in" to="rplidar/scan"/>
 
       <!-- ====================== Output topics ===================== -->
