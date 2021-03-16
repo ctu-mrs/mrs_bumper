@@ -2,7 +2,7 @@
 <package format="2">
 
   <name>mrs_bumper</name>
-  <version>0.0.1</version>
+  <version>0.0.2</version>
   <description>Program for publishing bumper messages for reactive collision avoidance</description>
 
   <author email="vrbamato@fel.cvut.cz">Matouš Vrba</author>
