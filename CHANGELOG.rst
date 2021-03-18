@@ -2,6 +2,10 @@
 Changelog for package mrs_bumper
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Major release
+
 0.0.2 (2021-03-16)
 ------------------
 * changed 3d lidar topic to os_cloud_nodelet/points_processed
