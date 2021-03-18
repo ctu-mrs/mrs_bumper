@@ -2,8 +2,8 @@
 Changelog for package mrs_bumper
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+1.0.0 (2021-03-18)
+------------------
 * Major release
 
 0.0.2 (2021-03-16)
