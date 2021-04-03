@@ -49,12 +49,13 @@ lidar3d:
   voxel_minpoints: 15
   # points within this box will be excluded (used to filter out points, belonging to the UAV)
   exclude_box:
+    use: true
     # offset of the box center relative to the sensor origin
     offset: [0.0, 0.0, -0.25] # meters
     size: [2.0, 2.0, 1.0] # meters
   # only points inside this box will be considered (used to filter out far and irrelevant points)
   include_box:
+    use: true
     # offset of the box center relative to the sensor origin
     offset: [0.09, 0.0, -0.25] # meters
-    # set to [0, 0, 0] to include all points
     size: [20.0, 20.0, 20.0] # meters
