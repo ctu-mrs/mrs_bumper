@@ -85,8 +85,12 @@ namespace mrs_bumper
 
       pl.loadParam("lidar3d/voxel_size", m_lidar3d_voxel_size);
       pl.loadParam("lidar3d/voxel_minpoints", m_lidar3d_voxel_minpoints);
+      pl.loadParam("lidar3d/exclude_box/use", m_lidar3d_exclude_box_use);
       pl.loadMatrixStatic("lidar3d/exclude_box/offset", m_lidar3d_exclude_box_offset);
       pl.loadMatrixStatic("lidar3d/exclude_box/size", m_lidar3d_exclude_box_size);
+      pl.loadParam("lidar3d/include_box/use", m_lidar3d_include_box_use);
+      pl.loadMatrixStatic("lidar3d/include_box/offset", m_lidar3d_include_box_offset);
+      pl.loadMatrixStatic("lidar3d/include_box/size", m_lidar3d_include_box_size);
 
       pl.loadParam("lidar2d/filter_size", m_lidar2d_filter_size);
 
@@ -445,8 +449,12 @@ namespace mrs_bumper
 
     int m_lidar3d_voxel_minpoints;
     double m_lidar3d_voxel_size;
+    bool m_lidar3d_exclude_box_use;
     Eigen::Vector3d m_lidar3d_exclude_box_offset;
     Eigen::Vector3d m_lidar3d_exclude_box_size;
+    bool m_lidar3d_include_box_use;
+    Eigen::Vector3d m_lidar3d_include_box_offset;
+    Eigen::Vector3d m_lidar3d_include_box_size;
 
     ros::Duration m_fallback_timeout;
     int m_fallback_n_horizontal_sectors;
@@ -683,19 +691,36 @@ namespace mrs_bumper
       
       //}
 
-      /* crop out points, belonging to the UAV //{ */
+      /* crop out points belonging to the UAV and too far points (include box and exclude box) //{ */
       
       {
-        const Eigen::Vector3d box_point1 = m_lidar3d_exclude_box_offset + m_lidar3d_exclude_box_size/2.0;
-        const Eigen::Vector3d box_point2 = m_lidar3d_exclude_box_offset - m_lidar3d_exclude_box_size/2.0;
-        const Eigen::Vector4f bpt1(box_point1.x(), box_point1.y(), box_point1.z(), 1.0f);
-        const Eigen::Vector4f bpt2(box_point2.x(), box_point2.y(), box_point2.z(), 1.0f);
         pcl::CropBox<pt_t> cb;
-        cb.setMax(bpt1);
-        cb.setMin(bpt2);
-        cb.setInputCloud(cloud_orig);
-        cb.setNegative(true);
-        cb.filter(*cloud);
+
+        if (m_lidar3d_exclude_box_use)
+        {
+          const Eigen::Vector3d box_point1 = m_lidar3d_exclude_box_offset + m_lidar3d_exclude_box_size/2.0;
+          const Eigen::Vector3d box_point2 = m_lidar3d_exclude_box_offset - m_lidar3d_exclude_box_size/2.0;
+          const Eigen::Vector4f bpt1(box_point1.x(), box_point1.y(), box_point1.z(), 1.0f);
+          const Eigen::Vector4f bpt2(box_point2.x(), box_point2.y(), box_point2.z(), 1.0f);
+          cb.setMax(bpt1);
+          cb.setMin(bpt2);
+          cb.setInputCloud(cloud);
+          cb.setNegative(true);
+          cb.filter(*cloud);
+        }
+
+        if (m_lidar3d_include_box_use)
+        {
+          const Eigen::Vector3d box_point1 = m_lidar3d_include_box_offset + m_lidar3d_include_box_size/2.0;
+          const Eigen::Vector3d box_point2 = m_lidar3d_include_box_offset - m_lidar3d_include_box_size/2.0;
+          const Eigen::Vector4f bpt1(box_point1.x(), box_point1.y(), box_point1.z(), 1.0f);
+          const Eigen::Vector4f bpt2(box_point2.x(), box_point2.y(), box_point2.z(), 1.0f);
+          cb.setMax(bpt1);
+          cb.setMin(bpt2);
+          cb.setInputCloud(cloud);
+          cb.setNegative(false);
+          cb.filter(*cloud);
+        }
       }
       
       //}
@@ -762,7 +787,7 @@ namespace mrs_bumper
     // helper method for initialization of angle ranges of horizontal sectors
     angle_range_t get_horizontal_sector_angle_interval(unsigned sector_it)
     {
-      assert(sector_it >= 0 && sector_it < m_n_horizontal_sectors);
+      assert(sector_it < m_n_horizontal_sectors);
       const double angle_step = 2.0 * M_PI / m_n_horizontal_sectors;
       const double angle_start = radians::wrap(sector_it * angle_step - angle_step / 2.0);
       const double angle_end = radians::wrap(angle_start + angle_step);
