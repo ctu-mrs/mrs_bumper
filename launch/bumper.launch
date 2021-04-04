@@ -26,7 +26,8 @@
     <node pkg="nodelet" type="nodelet" name="bumper" args="$(arg nodelet_load)" output="screen" launch-prefix="$(arg launch_prefix)">
 
       <!-- =========================== Parameters ========================== -->
-      <rosparam file="$(find mrs_bumper)/config/$(arg RUN_TYPE).yaml" />
+      <!-- <rosparam file="$(find mrs_bumper)/config/$(arg RUN_TYPE).yaml" /> -->
+      <rosparam file="$(find mrs_bumper)/config/uav_test_OS0.yaml" />
       <param name="uav_name" value="$(arg UAV_NAME)" />
       <param name="path_to_mask" value="$(arg mask_filename)" />
       <param name="frame_id" value="$(arg fcu_horizontal_frame)" />
