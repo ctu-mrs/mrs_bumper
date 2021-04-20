@@ -9,7 +9,7 @@ update_rate: 10
 fallback:
   timeout: 10.0 # seconds
   n_horizontal_sectors: 8
-  vertical_fov: !degrees 60
+  vertical_fov: !degrees 85
 
 # If available, the number of horizontal sectors and the vertical FOV are initialized from the depthmap camera info.
 depthmap:
