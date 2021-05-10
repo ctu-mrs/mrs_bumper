@@ -104,7 +104,7 @@ namespace mrs_bumper
       if (!pl.loadedSuccessfully())
       {
         ROS_ERROR("Some compulsory parameters were not loaded successfully, ending the node");
-        ros::shutdown();
+        ros::requestShutdown();
       }
 
       m_drmgr_ptr = std::make_unique<drmgr_t>(nh, m_node_name);
@@ -142,12 +142,12 @@ namespace mrs_bumper
         if (m_depthmap_mask_im.empty())
         {
           ROS_ERROR("[%s]: Error loading image mask from file '%s'! Ending node.", ros::this_node::getName().c_str(), path_to_mask.c_str());
-          ros::shutdown();
+          ros::requestShutdown();
         } else if (m_depthmap_mask_im.type() != CV_8UC1)
         {
           ROS_ERROR("[%s]: Loaded image mask has unexpected type: '%u' (expected %u)! Ending node.", ros::this_node::getName().c_str(), m_depthmap_mask_im.type(),
                     CV_8UC1);
-          ros::shutdown();
+          ros::requestShutdown();
         }
       }
 
