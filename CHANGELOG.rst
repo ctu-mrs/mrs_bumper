@@ -2,8 +2,8 @@
 Changelog for package mrs_bumper
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+1.0.1 (2021-05-16)
+------------------
 * disabled debugging flags
 * updated ros::shutdown
 * changed the bumper default vertical fov
