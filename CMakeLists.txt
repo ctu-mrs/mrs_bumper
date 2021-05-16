@@ -17,7 +17,7 @@ find_package(catkin REQUIRED COMPONENTS
   mrs_msgs
 )
 
-add_definitions("-fdiagnostics-color=always -O0 -g -DEIGEN_INITIALIZE_MATRICES_BY_NAN")
+# add_definitions("-fdiagnostics-color=always -O0 -g -DEIGEN_INITIALIZE_MATRICES_BY_NAN")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
