@@ -2,6 +2,15 @@
 Changelog for package mrs_bumper
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* disabled debugging flags
+* updated ros::shutdown
+* changed the bumper default vertical fov
+* added config parameters for using include_box and exclude_box to simulation.yaml
+* added include_box filter to lidar3d data, fixed voxelgrid
+* Contributors: Matouš Vrba, Tomas Baca, Vaclav Pritzl
+
 1.0.0 (2021-03-18)
 ------------------
 * Major release
