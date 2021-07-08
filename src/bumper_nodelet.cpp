@@ -159,6 +159,7 @@ namespace mrs_bumper
               "[%s]: Fallback timeout was specified, but fallback number of horizontal sectors (%d) or fallback vertical field of view (%.2f) is invalid (both "
               "have to be > 0). Ending node.",
               m_node_name.c_str(), m_fallback_n_horizontal_sectors, m_fallback_vertical_fov);
+          ros::requestShutdown();
         }
       }
       m_fallback_timeout = ros::Duration(fallback_timeout);
