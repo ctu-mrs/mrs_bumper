@@ -104,7 +104,7 @@ namespace mrs_bumper
       if (!pl.loadedSuccessfully())
       {
         ROS_ERROR("Some compulsory parameters were not loaded successfully, ending the node");
-        ros::requestShutdown();
+        ros::shutdown();
       }
 
       m_drmgr_ptr = std::make_unique<drmgr_t>(nh, m_node_name);
@@ -142,12 +142,12 @@ namespace mrs_bumper
         if (m_depthmap_mask_im.empty())
         {
           ROS_ERROR("[%s]: Error loading image mask from file '%s'! Ending node.", ros::this_node::getName().c_str(), path_to_mask.c_str());
-          ros::requestShutdown();
+          ros::shutdown();
         } else if (m_depthmap_mask_im.type() != CV_8UC1)
         {
           ROS_ERROR("[%s]: Loaded image mask has unexpected type: '%u' (expected %u)! Ending node.", ros::this_node::getName().c_str(), m_depthmap_mask_im.type(),
                     CV_8UC1);
-          ros::requestShutdown();
+          ros::shutdown();
         }
       }
 
@@ -159,7 +159,7 @@ namespace mrs_bumper
               "[%s]: Fallback timeout was specified, but fallback number of horizontal sectors (%d) or fallback vertical field of view (%.2f) is invalid (both "
               "have to be > 0). Ending node.",
               m_node_name.c_str(), m_fallback_n_horizontal_sectors, m_fallback_vertical_fov);
-          ros::requestShutdown();
+          ros::shutdown();
         }
       }
       m_fallback_timeout = ros::Duration(fallback_timeout);
