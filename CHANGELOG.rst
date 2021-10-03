@@ -2,6 +2,11 @@
 Changelog for package mrs_bumper
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* add missing ros shutdown request
+* Contributors: Pavel Petracek, Tomas Baca
+
 1.0.1 (2021-05-16)
 ------------------
 * disabled debugging flags
