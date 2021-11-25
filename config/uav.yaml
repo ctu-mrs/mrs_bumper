@@ -9,7 +9,7 @@ update_rate: 10
 fallback:
   timeout: 10.0 # seconds
   n_horizontal_sectors: 8
-  vertical_fov: !degrees 85
+  vertical_fov: !degrees 40
 
 # If available, the number of horizontal sectors and the vertical FOV are initialized from the depthmap camera info.
 depthmap:
@@ -46,7 +46,7 @@ lidar3d:
   # size of voxels for the VoxelGrid filter (points closer together than this are joined to one)
   voxel_size: 0.5
   # minimal number of points in a voxel for it to be considered
-  voxel_minpoints: 15
+  voxel_minpoints: 5
   # points within this box will be excluded (used to filter out points, belonging to the UAV)
   exclude_box:
     use: true
@@ -58,4 +58,4 @@ lidar3d:
     use: true
     # offset of the box center relative to the sensor origin
     offset: [0.09, 0.0, -0.25] # meters
-    size: [20.0, 20.0, 20.0] # meters
+    size: [40.0, 40.0, 20.0] # meters
