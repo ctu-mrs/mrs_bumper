@@ -23,10 +23,6 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# we really need to replace the flags because
-# we cannot build this with march=native
-set(CMAKE_CXX_FLAGS "")
-
 add_compile_options("-Wall")
 add_compile_options("-Wextra")
 add_compile_options(${PCL_COMPILE_OPTIONS})
