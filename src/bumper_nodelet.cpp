@@ -169,7 +169,9 @@ namespace mrs_bumper
       m_sectors_initialized = false;
       m_lidar2d_offset_initialized = false;
 
-      m_tfm = mrs_lib::Transformer(m_node_name, uav_name);
+      m_tfm = std::make_unique<mrs_lib::Transformer>(m_node_name);
+      m_tfm->setDefaultPrefix(uav_name);
+      m_tfm->retryLookupNewest(true);
       //}
 
       m_main_loop_timer = nh.createTimer(ros::Rate(m_update_rate), &Bumper::main_loop, this);
@@ -511,7 +513,7 @@ namespace mrs_bumper
     double m_lidar2d_offset;
     //}
 
-    mrs_lib::Transformer m_tfm;
+    std::unique_ptr<mrs_lib::Transformer> m_tfm;
 
   private:
     // --------------------------------------------------------------
@@ -729,7 +731,7 @@ namespace mrs_bumper
       m_lidar3d_processed.publish(cloud);
 
       // transform the pointcloud to the untilted frame
-      auto cloud_tfd_opt = m_tfm.transformSingle(m_frame_id, cloud);
+      auto cloud_tfd_opt = m_tfm->transformSingle(cloud, m_frame_id);
       if (cloud_tfd_opt == std::nullopt)
         return ret;
       cloud = cloud_tfd_opt.value();
@@ -891,7 +893,7 @@ namespace mrs_bumper
       x_lidar.vector.x = 1.0;
       x_lidar.vector.y = x_lidar.vector.z = 0.0;
       geometry_msgs::Vector3 x_fcu;
-      const auto tfd_opt = m_tfm.transformSingle(m_frame_id, x_lidar);
+      const auto tfd_opt = m_tfm->transformSingle(x_lidar, m_frame_id);
       if (!tfd_opt.has_value())
         return;
       m_lidar2d_offset = std::atan2(tfd_opt->vector.y, tfd_opt->vector.x);
