@@ -9,6 +9,8 @@
   <arg name="fcu_horizontal_frame" default="$(arg UAV_NAME)/fcu_untilted" />
   <arg name="use_realsense" default="true" />
 
+  <arg name="custom_config" default="" />
+
   <arg unless="$(arg debug)" name="launch_prefix" value=""/>
   <arg     if="$(arg debug)" name="launch_prefix" value="debug_roslaunch"/>
 
@@ -27,6 +29,8 @@
 
       <!-- =========================== Parameters ========================== -->
       <rosparam file="$(find mrs_bumper)/config/$(arg RUN_TYPE).yaml" />
+      <rosparam if="$(eval not arg('custom_config') == '')" file="$(arg custom_config)" />
+
       <param name="uav_name" value="$(arg UAV_NAME)" />
       <param name="path_to_mask" value="$(arg mask_filename)" />
       <param name="frame_id" value="$(arg fcu_horizontal_frame)" />
