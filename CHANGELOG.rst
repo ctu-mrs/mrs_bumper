@@ -2,8 +2,8 @@
 Changelog for package mrs_bumper
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+1.0.3 (2022-05-09)
+------------------
 * added custom config option
 * refactored against publisher handler
 * refactored agains updated transformer
