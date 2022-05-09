@@ -2,6 +2,15 @@
 Changelog for package mrs_bumper
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* added custom config option
+* refactored against publisher handler
+* refactored agains updated transformer
+* + install in cmakelists
+* removed flag override
+* Contributors: Tomas Baca
+
 1.0.2 (2021-10-03)
 ------------------
 * add missing ros shutdown request
