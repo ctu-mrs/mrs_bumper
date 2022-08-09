@@ -27,6 +27,9 @@ add_compile_options("-Wall")
 add_compile_options("-Wextra")
 add_compile_options(${PCL_COMPILE_OPTIONS})
 
+# remove warning info from PCL
+set(PCL_FIND_QUIETLY INTERNAL)
+
 find_package(OpenCV REQUIRED)
 
 find_package(PCL REQUIRED COMPONENTS)
