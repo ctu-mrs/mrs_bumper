@@ -2,8 +2,8 @@
 Changelog for package mrs_bumper
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+1.0.4 (2023-01-20)
+------------------
 * updated readme, updated ci
 * fix launch, env->optenv
 * Remove pcl warnings
