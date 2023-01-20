@@ -2,6 +2,13 @@
 Changelog for package mrs_bumper
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* updated readme, updated ci
+* fix launch, env->optenv
+* Remove pcl warnings
+* Contributors: Tomas Baca, vojta
+
 1.0.3 (2022-05-09)
 ------------------
 * added custom config option
