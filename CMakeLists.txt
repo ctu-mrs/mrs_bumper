@@ -3,6 +3,7 @@ project(mrs_bumper)
 
 set(CATKIN_DEPENDENCIES
   roscpp
+  nodelet
   dynamic_reconfigure
   tf2_ros
   tf2_geometry_msgs
@@ -13,6 +14,7 @@ set(CATKIN_DEPENDENCIES
   image_geometry
   pcl_ros
   pcl_conversions
+  pcl_msgs
   mrs_lib
   mrs_msgs
   )
