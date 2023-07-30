@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.1.2)
 project(mrs_bumper)
 
-find_package(catkin REQUIRED COMPONENTS
+set(CATKIN_DEPENDENCIES
   roscpp
   dynamic_reconfigure
   tf2_ros
@@ -15,6 +15,10 @@ find_package(catkin REQUIRED COMPONENTS
   pcl_conversions
   mrs_lib
   mrs_msgs
+  )
+
+find_package(catkin REQUIRED COMPONENTS
+  ${CATKIN_DEPENDENCIES}
   )
 
 # add_definitions("-fdiagnostics-color=always -O0 -g -DEIGEN_INITIALIZE_MATRICES_BY_NAN")
@@ -52,7 +56,7 @@ set(LIBRARIES
   )
 
 catkin_package(
-  CATKIN_DEPENDS mrs_msgs pcl_ros message_runtime # image_transport roscpp rospy std_msgs
+  CATKIN_DEPENDS ${CATKIN_DEPENDENCIES}
   LIBRARIES ${LIBRARIES}
   )
 
