@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.1.2)
 project(mrs_bumper)
 
 set(CATKIN_DEPENDENCIES
+  cmake_modules
   roscpp
   nodelet
   dynamic_reconfigure
@@ -23,6 +24,11 @@ find_package(catkin REQUIRED COMPONENTS
   ${CATKIN_DEPENDENCIES}
   )
 
+# include Eigen3
+find_package(Eigen3 REQUIRED)
+set(Eigen_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIRS})
+set(Eigen_LIBRARIES ${EIGEN3_LIBRARIES})
+
 # add_definitions("-fdiagnostics-color=always -O0 -g -DEIGEN_INITIALIZE_MATRICES_BY_NAN")
 
 set(CMAKE_CXX_STANDARD 17)
@@ -39,11 +45,6 @@ set(PCL_FIND_QUIETLY INTERNAL)
 find_package(OpenCV REQUIRED)
 
 find_package(PCL REQUIRED COMPONENTS)
-
-# include Eigen3
-find_package(Eigen3 REQUIRED)
-set(Eigen_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIRS})
-set(Eigen_LIBRARIES ${Eigen_LIBRARIES})
 
 generate_dynamic_reconfigure_options(
   config/Bumper.cfg
