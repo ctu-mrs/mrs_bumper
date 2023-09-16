@@ -1,23 +1,24 @@
-cmake_minimum_required(VERSION 3.1.2)
+cmake_minimum_required(VERSION 3.5)
 project(mrs_bumper)
 
 set(CATKIN_DEPENDENCIES
   cmake_modules
-  roscpp
-  nodelet
-  dynamic_reconfigure
-  tf2_ros
-  tf2_geometry_msgs
-  sensor_msgs
-  geometry_msgs
   cv_bridge
-  image_transport
+  dynamic_reconfigure
+  geometry_msgs
   image_geometry
-  pcl_ros
-  pcl_conversions
-  pcl_msgs
+  image_transport
+  message_runtime
   mrs_lib
   mrs_msgs
+  nodelet
+  pcl_conversions
+  pcl_msgs
+  pcl_ros
+  roscpp
+  sensor_msgs
+  tf2_geometry_msgs
+  tf2_ros
   )
 
 find_package(catkin REQUIRED COMPONENTS
@@ -55,7 +56,7 @@ set(EXECUTABLES
   )
 
 set(LIBRARIES
-  Bumper
+  MrsBumper_Bumper
   )
 
 catkin_package(
@@ -77,16 +78,16 @@ include_directories(include
 
 # bumper
 
-add_library(Bumper
+add_library(MrsBumper_Bumper
   src/bumper_nodelet.cpp
   )
 
-add_dependencies(Bumper
+add_dependencies(MrsBumper_Bumper
   ${${PROJECT_NAME}_EXPORTED_TARGETS}
   ${catkin_EXPORTED_TARGETS}
   )
 
-target_link_libraries(Bumper
+target_link_libraries(MrsBumper_Bumper
   ${catkin_LIBRARIES}
   ${OpenCV_LIBRARIES}
   ${PCL_LIBRARIES}
@@ -126,6 +127,6 @@ install(DIRECTORY launch config
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
   )
 
-install(FILES plugins.xml
+install(FILES nodelets.xml
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
   )
