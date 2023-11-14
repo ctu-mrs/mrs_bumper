@@ -1,8 +1,7 @@
 <launch>
 
-  <arg name="UAV_NAME" default="$(optenv UAV_NAME)"/>
+  <arg name="UAV_NAME" default="$(optenv UAV_NAME)" />
   <arg name="RUN_TYPE" default="$(optenv RUN_TYPE)" />
-  <arg name="PIXGARM" default="$(optenv PIXGARM false)" />
   <arg name="standalone" default="true" />
   <arg name="debug" default="false" />
   <arg name="fcu_frame" default="$(arg UAV_NAME)/fcu" />
@@ -11,23 +10,24 @@
 
   <arg name="custom_config" default="" />
 
-  <arg unless="$(arg debug)" name="launch_prefix" value=""/>
-  <arg     if="$(arg debug)" name="launch_prefix" value="debug_roslaunch"/>
+  <arg unless="$(arg debug)" name="launch_prefix" value="" />
+  <arg     if="$(arg debug)" name="launch_prefix" value="debug_roslaunch" />
 
   <arg name="ignore_mask" default="$(optenv IGNORE_MASK true)" />
-  <arg unless="$(arg ignore_mask)" name="mask_filename" value="$(find mrs_bumper)/masks/realsense_f550_mask.bmp"/>
-  <arg     if="$(arg ignore_mask)" name="mask_filename" value=""/>
+  <arg unless="$(arg ignore_mask)" name="mask_filename" value="$(find mrs_bumper)/masks/realsense_f550_mask.bmp" />
+  <arg     if="$(arg ignore_mask)" name="mask_filename" value="" />
 
   <arg name="manager" default="detection_nodelet_manager" />
   <arg name="nodelet" value="mrs_bumper/Bumper" />
-  <arg unless="$(arg standalone)" name="nodelet_load" value="load $(arg nodelet) $(arg manager)"/>
-  <arg     if="$(arg standalone)" name="nodelet_load" value="standalone $(arg nodelet)"/>
+  <arg unless="$(arg standalone)" name="nodelet_load" value="load $(arg nodelet) $(arg manager)" />
+  <arg     if="$(arg standalone)" name="nodelet_load" value="standalone $(arg nodelet)" />
 
   <group ns="$(arg UAV_NAME)">
 
     <node pkg="nodelet" type="nodelet" name="bumper" args="$(arg nodelet_load)" output="screen" launch-prefix="$(arg launch_prefix)">
 
       <!-- =========================== Parameters ========================== -->
+
       <rosparam file="$(find mrs_bumper)/config/$(arg RUN_TYPE).yaml" />
       <rosparam if="$(eval not arg('custom_config') == '')" file="$(arg custom_config)" />
 
@@ -35,22 +35,20 @@
       <param name="path_to_mask" value="$(arg mask_filename)" />
       <param name="frame_id" value="$(arg fcu_horizontal_frame)" />
 
-      <!-- ================ Laser rangefinder topics ================ -->
-      <remap if="$(eval arg('RUN_TYPE') == 'simulation')"                 from="~lidar1d_down_in" to="garmin/range"/>
-      <remap if="$(eval arg('RUN_TYPE') == 'uav' and arg('PIXGARM'))"     from="~lidar1d_down_in" to="mavros/distance_sensor/garmin"/>
-      <remap if="$(eval arg('RUN_TYPE') == 'uav' and not arg('PIXGARM'))" from="~lidar1d_down_in" to="garmin/range"/>
+        <!-- ================ Laser rangefinder topics ================ -->
 
-      <remap if="$(eval arg('RUN_TYPE') == 'simulation')"                 from="~lidar1d_up_in" to="garmin_up/range"/>
-      <remap if="$(eval arg('RUN_TYPE') == 'uav' and arg('PIXGARM'))"     from="~lidar1d_up_in" to="mavros/distance_sensor/garmin_up"/>
-      <remap if="$(eval arg('RUN_TYPE') == 'uav' and not arg('PIXGARM'))" from="~lidar1d_up_in" to="garmin_up/range"/>
+      <remap from="~lidar1d_down_in" to="hw_api/distance_sensor" />
+      <remap from="~lidar1d_up_in" to="garmin_up/range" />
 
-      <!-- =================== Other input topics =================== -->
-      <remap from="~depthmap_in" to="rs_d435/aligned_depth_to_color/image_raw"/>
-      <remap from="~depth_cinfo_in" to="rs_d435/aligned_depth_to_color/camera_info"/>
-      <remap from="~lidar3d_in" to="os_cloud_nodelet/points"/>
-      <remap from="~lidar2d_in" to="rplidar/scan"/>
+        <!-- =================== Other input topics =================== -->
 
-      <!-- ====================== Output topics ===================== -->
+      <remap from="~depthmap_in" to="front_rgbd/aligned_depth_to_color/image_raw" />
+      <remap from="~depth_cinfo_in" to="front_rgbd/aligned_depth_to_color/camera_info" />
+      <remap from="~lidar3d_in" to="os_cloud_nodelet/points" />
+      <remap from="~lidar2d_in" to="rplidar/scan" />
+
+        <!-- ====================== Output topics ===================== -->
+
       <remap from="~obstacle_sectors_out" to="~obstacle_sectors" />
 
     </node>
