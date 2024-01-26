@@ -1,0 +1,47 @@
+mrs_uav_managers:
+
+  estimation_manager:
+
+    # loaded state estimator plugins
+    # available in mrs_uav_state_estimators: gps_garmin, gps_baro, rtk, aloam, ground_truth, dummy
+    state_estimators: [
+    "gps_garmin",
+    "gps_baro",
+    # "rtk",
+    # "aloam",
+    # "ground_truth",
+    # "dummy"
+    ]
+
+    initial_state_estimator: "gps_baro" # will be used as the first state estimator
+    agl_height_estimator: "garmin_agl" # only slightly filtered height for checking min height (not used in control feedback)
+
+  control_manager:
+
+    obstacle_bumper:
+
+      enabled: true
+
+      switch_tracker: true
+      tracker: "MpcTracker"
+
+      switch_controller: true
+      controller: "Se3Controller"
+
+      horizontal:
+        threshold_distance: 2.5 # [m]
+
+      vertical:
+        threshold_distance: 1.5 # [m]
+
+  uav_manager:
+
+    takeoff:
+      after_takeoff:
+        controller: Se3Controller
+
+  constraint_manager:
+
+    default_constraints:
+      gps_garmin: "slow"
+      gps_baro: "slow"

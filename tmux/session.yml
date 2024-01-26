@@ -1,0 +1,53 @@
+# do not modify these
+aoot: ./
+name: simulation
+socket_name: mrs
+attach: false
+tmux_options: -f /etc/ctu-mrs/tmux.conf
+# you can modify these
+pre_window: export UAV_NAME=uav1; export RUN_TYPE=simulation; export UAV_TYPE=m690
+startup_window: control
+windows:
+  - roscore:
+      layout: tiled
+      panes:
+        - roscore
+  - gazebo:
+      layout: tiled
+      panes:
+        - waitForRos; roslaunch mrs_uav_gazebo_simulation simulation.launch gui:=true world_name:=forest
+        - waitForTime; roslaunch mrs_uav_px4_api api.launch
+  - rviz:
+      layout: tiled
+      panes:
+        - waitForHw; roslaunch mrs_uav_core rviz.launch
+        - waitForHw; roslaunch mrs_rviz_plugins load_robot.launch
+        - waitForHw; roslaunch mrs_rviz_plugins rviz_interface.launch
+  - spawn:
+      layout: tiled
+      panes:
+        - waitForGazebo; rosservice call /mrs_drone_spawner/spawn "1 $UAV_TYPE --enable-rangefinder --enable-ouster --use-gpu-ray"
+        # - waitForGazebo; rosservice call /mrs_drone_spawner/spawn "1 $UAV_TYPE --enable-rangefinder --enable-rplidar"
+  - takeoff:
+      layout: tiled
+      panes:
+        - waitForTime; roslaunch mrs_uav_autostart automatic_start.launch
+        - 'waitForControl; rosservice call /$UAV_NAME/hw_api/arming 1; sleep 2.0; rosservice call /$UAV_NAME/hw_api/offboard'
+  - status:
+      layout: tiled
+      panes:
+        - waitForHw; roslaunch mrs_uav_status status.launch
+  - bumper:
+      layout: tiled
+      panes:
+        - waitForHw; roslaunch mrs_bumper bumper.launch
+  - control:
+      layout: tiled
+      panes:
+        # - waitForTime; roslaunch mrs_uav_core core.launch platform_config:=`rospack find mrs_uav_gazebo_simulation`/config/mrs_uav_system/$UAV_TYPE.yaml custom_config:=./config/custom_config.yaml world_config:=./config/world_config.yaml network_config:=./config/network_config.yaml
+        - waitForTime; roslaunch mrs_uav_core core.launch platform_config:=./config/m690.yaml custom_config:=./config/custom_config.yaml world_config:=./config/world_config.yaml network_config:=./config/network_config.yaml
+  - gazebo_camera_follow:
+      layout: tiled
+      panes:
+        - waitForHw; gz camera -c gzclient_camera -f uav1; history -s gz camera -c gzclient_camera -f uav1
+        - waitForControl; ~/.i3/layout_manager.sh layout.json
