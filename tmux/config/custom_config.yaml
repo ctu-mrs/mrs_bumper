@@ -13,7 +13,7 @@ mrs_uav_managers:
     # "dummy"
     ]
 
-    initial_state_estimator: "gps_baro" # will be used as the first state estimator
+    initial_state_estimator: "gps_garmin" # will be used as the first state estimator
     agl_height_estimator: "garmin_agl" # only slightly filtered height for checking min height (not used in control feedback)
 
   control_manager:
@@ -29,10 +29,10 @@ mrs_uav_managers:
       controller: "Se3Controller"
 
       horizontal:
-        threshold_distance: 2.5 # [m]
+        threshold_distance: 1.2 # [m]
 
       vertical:
-        threshold_distance: 1.5 # [m]
+        threshold_distance: 1.2 # [m]
 
   uav_manager:
 
