@@ -52,7 +52,7 @@ lidar3d:
     use: true
     # offset of the box center relative to the sensor origin
     offset: [0.0, 0.0, -0.25] # meters
-    size: [2.0, 2.0, 1.0] # meters
+    size: [1.5, 1.5, 1.0] # meters
   # only points inside this box will be considered (used to filter out far and irrelevant points)
   include_box:
     use: true
