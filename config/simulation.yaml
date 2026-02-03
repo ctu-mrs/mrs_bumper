@@ -1,3 +1,14 @@
+structuring_element_a: 3
+structuring_element_b: 5
+dilate_iterations: 0
+erode_iterations: 0
+erode_ignore_empty_iterations: 0
+histogram_n_bins: 1000
+histogram_quantile_area: 200
+max_depth: 10.0
+median_filter_size: 10
+update_rate: 10.0
+
 # size of the median filter, used for each sector
 median_filter_size: 10
 # how often data from sensors are evaluated and the bumper topic published
@@ -17,7 +28,9 @@ depthmap:
   roi:
     centering: true
     height: 480
-    # y_offset: 0
+    x_offset: 0
+    y_offset: 0
+    width: 0
   # this value is used in the input depth map to indicate that
   # depth of the specific pixel is unknown (0 for Realsense by default)
   unknown_pixel_value: 0

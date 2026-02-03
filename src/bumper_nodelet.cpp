@@ -3,14 +3,13 @@
 /* headers //{ */
 
 // clang: MatousFormat
-#include <image_transport/image_transport.h>
-#include <image_geometry/pinhole_camera_model.h>
-#include <cv_bridge/cv_bridge.h>
-#include <nodelet/nodelet.h>
-#include <sensor_msgs/LaserScan.h>
-#include <sensor_msgs/Range.h>
+#include <image_transport/image_transport.hpp>
+#include <image_geometry/pinhole_camera_model.hpp>
+#include <cv_bridge/cv_bridge.hpp>
+#include <sensor_msgs/msg/laser_scan.hpp>
+#include <sensor_msgs/msg/range.hpp>
 #include <tf2_ros/transform_listener.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -18,8 +17,6 @@
 #include <pcl/common/common.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
-#include <pcl_ros/point_cloud.h>
-#include <pcl_ros/transforms.h>
 #include <pcl_conversions/pcl_conversions.h>
 
 #include <pcl/filters/voxel_grid.h>
@@ -28,26 +25,24 @@
 #include <boost/circular_buffer.hpp>
 
 #include <mrs_lib/param_loader.h>
-#include <mrs_lib/dynamic_reconfigure_mgr.h>
-#include <mrs_lib/subscribe_handler.h>
+#include <mrs_lib/dynparam_mgr.h>
+#include <mrs_lib/mutex.h>
+#include <mrs_lib/subscriber_handler.h>
 #include <mrs_lib/transformer.h>
 #include <mrs_lib/geometry/cyclic.h>
 #include <mrs_lib/publisher_handler.h>
+#include <mrs_lib/node.h>
 
-#include <mrs_bumper/BumperConfig.h>
-#include <mrs_msgs/ObstacleSectors.h>
-#include <mrs_msgs/Histogram.h>
-
-// shortcut type to the dynamic reconfigure manager template instance
-typedef mrs_lib::DynamicReconfigureMgr<mrs_bumper::BumperConfig> drmgr_t;
+#include <mrs_msgs/msg/obstacle_sectors.hpp>
+#include <mrs_msgs/msg/histogram.hpp>
 
 //}
 
 namespace mrs_bumper
 {
 
-  using ObstacleSectors = mrs_msgs::ObstacleSectors;
-  using Histogram = mrs_msgs::Histogram;
+  using ObstacleSectors = mrs_msgs::msg::ObstacleSectors;
+  using Histogram = mrs_msgs::msg::Histogram;
 
   using pt_t = pcl::PointXYZ;
   using pc_t = pcl::PointCloud<pt_t>;
@@ -55,20 +50,72 @@ namespace mrs_bumper
 
   using radians = mrs_lib::geometry::radians;
 
-  class Bumper : public nodelet::Nodelet
+  /* DynParams_t //{ */
+
+  struct DynParams_t
+  {
+    int structuring_element_a;
+    int structuring_element_b;
+    int dilate_iterations;
+    int erode_iterations;
+    int erode_ignore_empty_iterations;
+    int histogram_n_bins;
+    int histogram_quantile_area;
+    double max_depth;
+    int median_filter_size;
+    double update_rate;
+  };
+
+  //}
+
+  class Bumper : public mrs_lib::Node
   {
   public:
+    Bumper(const rclcpp::NodeOptions& options) : mrs_lib::Node("Bumper", options)
+    {
+      onInit();
+    }
+
     /* onInit() method //{ */
     void onInit()
     {
-      ros::NodeHandle nh = nodelet::Nodelet::getMTPrivateNodeHandle();
-
-      m_node_name = "Bumper";
+      node = this->this_node_ptr();
+      clock = node->get_clock();
 
       /* Load parameters from ROS //{*/
-      mrs_lib::ParamLoader pl(nh, m_node_name);
+      mrs_lib::ParamLoader pl(node);
+
+      // load custom config
+      std::string custom_config_path;
+
+      pl.loadParam("custom_config", custom_config_path);
+
+      if (custom_config_path != "")
+      {
+        RCLCPP_INFO(node->get_logger(), "loading custom config '%s", custom_config_path.c_str());
+        pl.addYamlFile(custom_config_path);
+      }
+
+      // load main config
+      pl.addYamlFileFromParam("config");
+
+      // Dynparam_mgr has its own param loader.
+      m_drmgr_ptr = std::make_shared<mrs_lib::DynparamMgr>(node, mutex_drs_params_);
+      m_drmgr_ptr->get_param_provider().copyYamls(pl.getParamProvider());
+
+      m_drmgr_ptr->register_param("structuring_element_a", &drs_params_.structuring_element_a, mrs_lib::DynparamMgr::range_t<int>(1, 10));
+      m_drmgr_ptr->register_param("structuring_element_b", &drs_params_.structuring_element_b, mrs_lib::DynparamMgr::range_t<int>(1, 10));
+      m_drmgr_ptr->register_param("dilate_iterations", &drs_params_.dilate_iterations, mrs_lib::DynparamMgr::range_t<int>(0, 10));
+      m_drmgr_ptr->register_param("erode_iterations", &drs_params_.erode_iterations, mrs_lib::DynparamMgr::range_t<int>(0, 10));
+      m_drmgr_ptr->register_param("erode_ignore_empty_iterations", &drs_params_.erode_ignore_empty_iterations, mrs_lib::DynparamMgr::range_t<int>(0, 10));
+      m_drmgr_ptr->register_param("histogram_n_bins", &drs_params_.histogram_n_bins, mrs_lib::DynparamMgr::range_t<int>(1, 10000));
+      m_drmgr_ptr->register_param("histogram_quantile_area", &drs_params_.histogram_quantile_area, mrs_lib::DynparamMgr::range_t<int>(1, 10000));
+      m_drmgr_ptr->register_param("max_depth", &drs_params_.max_depth, mrs_lib::DynparamMgr::range_t<double>(0.0, 65.535));
+      m_drmgr_ptr->register_param("median_filter_size", &drs_params_.median_filter_size, mrs_lib::DynparamMgr::range_t<int>(1, 100));
+      m_drmgr_ptr->register_param("update_rate", &drs_params_.update_rate, mrs_lib::DynparamMgr::range_t<double>(1.0, 100.0));
+
       // LOAD STATIC PARAMETERS
-      ROS_INFO("[Bumper]: Loading static parameters:");
+      RCLCPP_INFO(node->get_logger(), "Loading static parameters:");
       const auto uav_name = pl.loadParam2<std::string>("uav_name");
       pl.loadParam("update_rate", m_update_rate, 10.0);
       pl.loadParam("frame_id", m_frame_id);
@@ -105,18 +152,16 @@ namespace mrs_bumper
       // CHECK LOADING STATUS
       if (!pl.loadedSuccessfully())
       {
-        ROS_ERROR("Some compulsory parameters were not loaded successfully, ending the node");
-        ros::shutdown();
+        RCLCPP_ERROR(node->get_logger(), "Some compulsory parameters were not loaded successfully, ending the node");
+        rclcpp::shutdown();
       }
 
-      m_drmgr_ptr = std::make_unique<drmgr_t>(nh, m_node_name);
       //}
 
       /* Create publishers and subscribers //{ */
       // Initialize subscribers
-      mrs_lib::SubscribeHandlerOptions shopts;
-      shopts.nh = nh;
-      shopts.node_name = "Bumper";
+      mrs_lib::SubscriberHandlerOptions shopts;
+      shopts.node = node;
 
       mrs_lib::construct_object(m_depthmap_sh, shopts, "depthmap_in");
       mrs_lib::construct_object(m_depth_cinfo_sh, shopts, "depth_cinfo_in");
@@ -125,31 +170,35 @@ namespace mrs_bumper
       mrs_lib::construct_object(m_lidar1d_down_sh, shopts, "lidar1d_down_in");
       mrs_lib::construct_object(m_lidar1d_up_sh, shopts, "lidar1d_up_in");
 
-      // Initialize publishers
-      m_obstacles_pub = mrs_lib::PublisherHandler<ObstacleSectors>(nh, "obstacle_sectors", 1);
-      m_processed_depthmap_pub = mrs_lib::PublisherHandler<sensor_msgs::Image>(nh, "processed_depthmap", 1);
-      m_depthmap_hist_pub = mrs_lib::PublisherHandler<Histogram>(nh, "depthmap_histogram", 1);
-      m_lidar3d_processed = mrs_lib::PublisherHandler<sensor_msgs::PointCloud2>(nh, "lidar3d_processed", 1);
+      mrs_lib::PublisherHandlerOptions phopts;
+      phopts.node = node;
 
-      m_tf_listener_ptr = std::make_unique<tf2_ros::TransformListener>(m_tf_buffer);
+      // Initialize publishers
+      m_obstacles_pub = mrs_lib::PublisherHandler<ObstacleSectors>(phopts, "obstacle_sectors");
+      m_processed_depthmap_pub = mrs_lib::PublisherHandler<sensor_msgs::msg::Image>(phopts, "processed_depthmap");
+      m_depthmap_hist_pub = mrs_lib::PublisherHandler<Histogram>(phopts, "depthmap_histogram");
+      m_lidar3d_processed = mrs_lib::PublisherHandler<sensor_msgs::msg::PointCloud2>(phopts, "lidar3d_processed");
+
+      // initialize tf buffer with node clock and start transform listener
+      m_tf_buffer = std::make_unique<tf2_ros::Buffer>(node->get_clock());
+      m_tf_listener_ptr = std::make_unique<tf2_ros::TransformListener>(*m_tf_buffer);
       //}
 
       /* Initialize other varibles //{ */
       if (path_to_mask.empty())
       {
-        ROS_INFO("[%s]: Not using image mask", ros::this_node::getName().c_str());
+        RCLCPP_INFO(node->get_logger(), "Not using image mask");
       } else
       {
         m_depthmap_mask_im = cv::imread(path_to_mask, cv::IMREAD_GRAYSCALE);
         if (m_depthmap_mask_im.empty())
         {
-          ROS_ERROR("[%s]: Error loading image mask from file '%s'! Ending node.", ros::this_node::getName().c_str(), path_to_mask.c_str());
-          ros::shutdown();
+          RCLCPP_ERROR(node->get_logger(), "Error loading image mask from file '%s'! Ending node.", path_to_mask.c_str());
+          rclcpp::shutdown();
         } else if (m_depthmap_mask_im.type() != CV_8UC1)
         {
-          ROS_ERROR("[%s]: Loaded image mask has unexpected type: '%u' (expected %u)! Ending node.", ros::this_node::getName().c_str(),
-                    m_depthmap_mask_im.type(), CV_8UC1);
-          ros::shutdown();
+          RCLCPP_ERROR(node->get_logger(), "Loaded image mask has unexpected type: '%u' (expected %u)! Ending node.", m_depthmap_mask_im.type(), CV_8UC1);
+          rclcpp::shutdown();
         }
       }
 
@@ -157,105 +206,108 @@ namespace mrs_bumper
       {
         if (m_fallback_n_horizontal_sectors == 0 || m_fallback_vertical_fov == 0.0)
         {
-          ROS_ERROR(
-              "[%s]: Fallback timeout was specified, but fallback number of horizontal sectors (%d) or fallback vertical field of view (%.2f) is invalid (both "
+          RCLCPP_ERROR(
+              node->get_logger(),
+              "Fallback timeout was specified, but fallback number of horizontal sectors (%d) or fallback vertical field of view (%.2f) is invalid (both "
               "have to be > 0). Ending node.",
-              m_node_name.c_str(), m_fallback_n_horizontal_sectors, m_fallback_vertical_fov);
-          ros::shutdown();
+              m_fallback_n_horizontal_sectors, m_fallback_vertical_fov);
+          rclcpp::shutdown();
         }
       }
-      m_fallback_timeout = ros::Duration(fallback_timeout);
+      m_fallback_timeout = rclcpp::Duration::from_seconds(fallback_timeout);
 
       m_depthmap_roi_initialized = false;
       m_first_message_received = false;
       m_sectors_initialized = false;
       m_lidar2d_offset_initialized = false;
 
-      m_tfm = std::make_unique<mrs_lib::Transformer>(m_node_name);
+      m_tfm = std::make_unique<mrs_lib::Transformer>(node);
       m_tfm->setDefaultPrefix(uav_name);
       m_tfm->retryLookupNewest(true);
       //}
 
-      m_main_loop_timer = nh.createTimer(ros::Rate(m_update_rate), &Bumper::main_loop, this);
+      m_main_loop_timer = node->create_wall_timer(std::chrono::duration<double>(1.0 / m_update_rate), std::bind(&Bumper::main_loop, this));
 
       std::cout << "----------------------------------------------------------" << std::endl;
     }
     //}
 
     /* main_loop() method //{ */
-    void main_loop([[maybe_unused]] const ros::TimerEvent& evt)
+    void main_loop()
     {
       /* initialize some stuff, if possible //{ */
 
       /* Initialize number of horizontal sectors etc from camera info message //{ */
       if (!m_sectors_initialized && m_depth_cinfo_sh.hasMsg())
       {
-        ROS_INFO("[Bumper]: Processing camera info message to initialize sectors");
+        RCLCPP_INFO(node->get_logger(), "Processing camera info message to initialize sectors");
 
         const auto cinfo = m_depth_cinfo_sh.getMsg();
         initialize_roi(cinfo->width, cinfo->height);
 
         const double w = m_depthmap_roi.width;
         const double h = m_depthmap_roi.height;
-        const double fx = cinfo->K[0];
-        const double fy = cinfo->K[4];
+        const double fx = cinfo->k[0];
+        const double fy = cinfo->k[4];
         const double horizontal_fov = std::atan2(w / 2.0, fx) * 2.0;
         const double vertical_fov = std::atan2(h / 2.0, fy) * 2.0;
         const int n_horizontal_sectors = std::ceil(2.0 * M_PI / horizontal_fov);
         initialize_sectors(n_horizontal_sectors, vertical_fov);
 
-        ROS_INFO("[Bumper]: Depth camera horizontal FOV: %.1fdeg", horizontal_fov / M_PI * 180.0);
-        ROS_INFO("[Bumper]: Depth camera vertical FOV: %.1fdeg", vertical_fov / M_PI * 180.0);
-        ROS_INFO("[Bumper]: Number of horizontal sectors: %d", m_n_horizontal_sectors);
+        RCLCPP_INFO(node->get_logger(), "Depth camera horizontal FOV: %.1fdeg", horizontal_fov / M_PI * 180.0);
+        RCLCPP_INFO(node->get_logger(), "Depth camera vertical FOV: %.1fdeg", vertical_fov / M_PI * 180.0);
+        RCLCPP_INFO(node->get_logger(), "Number of horizontal sectors: %d", m_n_horizontal_sectors);
       }
       //}
 
       /* Initialize horizontal angle offset of 2D lidar from a new message //{ */
       if (!m_lidar2d_offset_initialized && m_lidar2d_sh.hasMsg())
       {
-        ROS_INFO_THROTTLE(1.0, "[Bumper]: Initializing 2D lidar horizontal angle offset");
+        RCLCPP_INFO_THROTTLE(node->get_logger(), *clock, 1000, "Initializing 2D lidar horizontal angle offset");
 
         const auto lidar2d_msg = m_lidar2d_sh.getMsg();
         initialize_lidar2d_offset(lidar2d_msg);
 
         if (m_lidar2d_offset_initialized)
-          ROS_INFO("[Bumper]: 2D lidar horizontal angle offset: %.2f", m_lidar2d_offset);
+          RCLCPP_INFO(node->get_logger(), "2D lidar horizontal angle offset: %.2f", m_lidar2d_offset);
         else
-          ROS_WARN_THROTTLE(1.0, "[Bumper]: 2D lidar horizontal angle offset initialization failed, will retry.");
+          RCLCPP_WARN_THROTTLE(node->get_logger(), *clock, 1000, "2D lidar horizontal angle offset initialization failed, will retry.");
       }
       //}
 
       //}
 
+      auto drs_params = mrs_lib::get_mutexed(mutex_drs_params_, drs_params_);
       /* apply changes from dynamic reconfigure //{ */
-      if (m_median_filter_size != m_drmgr_ptr->config.median_filter_size)
+      if (m_median_filter_size != drs_params.median_filter_size)
       {
-        if (m_drmgr_ptr->config.median_filter_size > 0)
+        if (drs_params.median_filter_size > 0)
         {
-          m_median_filter_size = m_drmgr_ptr->config.median_filter_size;
+          m_median_filter_size = drs_params.median_filter_size;
           update_filter_sizes();
         } else
         {
-          ROS_ERROR("[Bumper]: Size of median filter cannot be <= 0: %d! Ignoring new value.", m_drmgr_ptr->config.median_filter_size);
+          RCLCPP_ERROR(node->get_logger(), "Size of median filter cannot be <= 0: %d! Ignoring new value.", drs_params.median_filter_size);
         }
       }
 
-      if (m_update_rate != m_drmgr_ptr->config.update_rate)
+      if (m_update_rate != drs_params.update_rate)
       {
-        if (m_drmgr_ptr->config.update_rate > 0.0)
+        if (drs_params.update_rate > 0.0)
         {
-          m_update_rate = m_drmgr_ptr->config.update_rate;
-          m_main_loop_timer.setPeriod(ros::Duration(1.0 / m_update_rate));
+          m_update_rate = drs_params.update_rate;
+          m_main_loop_timer->cancel();
+          m_main_loop_timer = node->create_wall_timer(std::chrono::duration<double>(1.0 / m_update_rate), std::bind(&Bumper::main_loop, this));
         } else
         {
-          ROS_ERROR("[Bumper]: Update rate cannot be <= 0: %lf! Ignoring new value.", m_drmgr_ptr->config.update_rate);
+          RCLCPP_ERROR(node->get_logger(), "Update rate cannot be <= 0: %lf! Ignoring new value.", drs_params.update_rate);
         }
       }
       //}
 
       if (m_sectors_initialized)
       {
-        std::vector<std::tuple<int, std::vector<double>, ros::Time>> sensors_sectors;
+        std::vector<std::tuple<int, std::vector<double>, rclcpp::Time>> sensors_sectors;
         std::vector<std::string> sensors_topics;
         /* process any new messages from sensors //{ */
 
@@ -266,18 +318,18 @@ namespace mrs_bumper
           if (!m_depthmap_roi_initialized)
             initialize_roi(source_msg->image.cols, source_msg->image.rows);
           const auto obstacle_sectors = find_obstacles_depthmap(source_msg);
-          sensors_sectors.push_back({ObstacleSectors::SENSOR_DEPTH, obstacle_sectors, source_msg->header.stamp});
+          const rclcpp::Time msg_stamp = rclcpp::Time(source_msg->header.stamp);
+          sensors_sectors.emplace_back(ObstacleSectors::SENSOR_DEPTH, obstacle_sectors, msg_stamp);
           sensors_topics.push_back(m_depthmap_sh.topicName());
         }
 
         // Check data from the 3D lidar
         if (m_lidar3d_sh.newMsg())
         {
-          const auto cloud = m_lidar3d_sh.getMsg();
-          std::vector<double> obstacle_sectors = find_obstacles_pointcloud(cloud);
-          ros::Time msg_stamp;
-          pcl_conversions::fromPCL(cloud->header.stamp, msg_stamp);
-          sensors_sectors.push_back({ObstacleSectors::SENSOR_LIDAR3D, obstacle_sectors, msg_stamp});
+          const auto cloud_msg = m_lidar3d_sh.getMsg();
+          std::vector<double> obstacle_sectors = find_obstacles_pointcloud(cloud_msg);
+          const rclcpp::Time msg_stamp = rclcpp::Time(cloud_msg->header.stamp);
+          sensors_sectors.emplace_back(ObstacleSectors::SENSOR_LIDAR3D, obstacle_sectors, msg_stamp);
           sensors_topics.push_back(m_lidar3d_sh.topicName());
         }
 
@@ -286,7 +338,8 @@ namespace mrs_bumper
         {
           const auto msg = m_lidar2d_sh.getMsg();
           std::vector<double> obstacle_sectors = find_obstacles_lidar2d(msg);
-          sensors_sectors.push_back({ObstacleSectors::SENSOR_LIDAR2D, obstacle_sectors, msg->header.stamp});
+          const rclcpp::Time msg_stamp = rclcpp::Time(msg->header.stamp);
+          sensors_sectors.emplace_back(ObstacleSectors::SENSOR_LIDAR2D, obstacle_sectors, msg_stamp);
           sensors_topics.push_back(m_lidar2d_sh.topicName());
         }
 
@@ -295,7 +348,8 @@ namespace mrs_bumper
         {
           const auto msg = m_lidar1d_down_sh.getMsg();
           std::vector<double> obstacle_sectors = find_obstacles_lidar1d(msg, m_bottom_sector_idx);
-          sensors_sectors.push_back({ObstacleSectors::SENSOR_LIDAR1D, obstacle_sectors, msg->header.stamp});
+          const rclcpp::Time msg_stamp = rclcpp::Time(msg->header.stamp);
+          sensors_sectors.emplace_back(ObstacleSectors::SENSOR_LIDAR1D, obstacle_sectors, msg_stamp);
           sensors_topics.push_back(m_lidar1d_down_sh.topicName());
         }
 
@@ -304,7 +358,8 @@ namespace mrs_bumper
         {
           const auto msg = m_lidar1d_up_sh.getMsg();
           std::vector<double> obstacle_sectors = find_obstacles_lidar1d(msg, m_top_sector_idx);
-          sensors_sectors.push_back({ObstacleSectors::SENSOR_LIDAR1D, obstacle_sectors, msg->header.stamp});
+          const rclcpp::Time msg_stamp = rclcpp::Time(msg->header.stamp);
+          sensors_sectors.emplace_back(ObstacleSectors::SENSOR_LIDAR1D, obstacle_sectors, msg_stamp);
           sensors_topics.push_back(m_lidar1d_up_sh.topicName());
         }
 
@@ -312,7 +367,7 @@ namespace mrs_bumper
 
         std::vector<double> res_obstacles(m_n_total_sectors, ObstacleSectors::OBSTACLE_NO_DATA);
         std::vector<int8_t> res_sensors(m_n_total_sectors, ObstacleSectors::SENSOR_NONE);
-        ros::Time res_stamp = ros::Time::now();
+        rclcpp::Time res_stamp = clock->now();
         /* put the resuls from different sensors together //{ */
 
         for (const auto& sensor_sectors : sensors_sectors)
@@ -365,71 +420,74 @@ namespace mrs_bumper
             const auto sensor = std::get<0>(el);
             switch (sensor)
             {
-              case ObstacleSectors::SENSOR_NONE:
-                used_sensors.push_back("\033[1;31minvalid \033[0m");
-                break;
-              case ObstacleSectors::SENSOR_DEPTH:
-                used_sensors.push_back("depthmap");
-                break;
-              case ObstacleSectors::SENSOR_LIDAR1D:
-                used_sensors.push_back("LiDAR 1D");
-                break;
-              case ObstacleSectors::SENSOR_LIDAR2D:
-                used_sensors.push_back("LiDAR 2D");
-                break;
-              case ObstacleSectors::SENSOR_LIDAR3D:
-                used_sensors.push_back("LiDAR 3D");
-                break;
+            case ObstacleSectors::SENSOR_NONE:
+              used_sensors.push_back("\033[1;31minvalid \033[0m");
+              break;
+            case ObstacleSectors::SENSOR_DEPTH:
+              used_sensors.push_back("depthmap");
+              break;
+            case ObstacleSectors::SENSOR_LIDAR1D:
+              used_sensors.push_back("LiDAR 1D");
+              break;
+            case ObstacleSectors::SENSOR_LIDAR2D:
+              used_sensors.push_back("LiDAR 2D");
+              break;
+            case ObstacleSectors::SENSOR_LIDAR3D:
+              used_sensors.push_back("LiDAR 3D");
+              break;
             }
           }
           std::stringstream ss;
           for (size_t it = 0; it < used_sensors.size(); it++)
             ss << std::endl << "\t[" << used_sensors.at(it) << "] at topic \"" << sensors_topics.at(it) << "\"";
-          ROS_INFO_STREAM_THROTTLE(2.0, "[Bumper]: Updating bumper using sensors:" << ss.str());
+          RCLCPP_INFO_STREAM_THROTTLE(node->get_logger(), *clock, 2000, "Updating bumper using sensors:" << ss.str());
         }
 
         //}
-      } else  // if the number of sectors and vertical FOV were not initialized yet, check for fallback timeout
+      } else // if the number of sectors and vertical FOV were not initialized yet, check for fallback timeout
       {
         /* check for fallback timeout, apply if neccessary //{ */
         /* if we got a first sensor message, but still no cinfo, remember the stamp (for fallback timeout) //{ */
 
         if (!m_first_message_received && m_depthmap_sh.hasMsg())
         {
-          m_first_message_stamp = m_depthmap_sh.getMsg()->header.stamp;
+          m_first_message_stamp = rclcpp::Time(m_depthmap_sh.getMsg()->header.stamp);
           m_first_message_received = true;
         }
         if (!m_first_message_received && m_lidar3d_sh.hasMsg())
         {
-          pcl_conversions::fromPCL(m_lidar3d_sh.getMsg()->header.stamp, m_first_message_stamp);
+          m_first_message_stamp = rclcpp::Time(m_lidar3d_sh.getMsg()->header.stamp);
           m_first_message_received = true;
         }
         if (!m_first_message_received && m_lidar2d_sh.hasMsg())
         {
-          m_first_message_stamp = m_lidar2d_sh.getMsg()->header.stamp;
+          m_first_message_stamp = rclcpp::Time(m_lidar2d_sh.getMsg()->header.stamp);
           m_first_message_received = true;
         }
         if (!m_first_message_received && m_lidar1d_down_sh.hasMsg())
         {
-          m_first_message_stamp = m_lidar1d_down_sh.getMsg()->header.stamp;
+          m_first_message_stamp = rclcpp::Time(m_lidar1d_down_sh.getMsg()->header.stamp);
           m_first_message_received = true;
         }
         if (!m_first_message_received && m_lidar1d_up_sh.hasMsg())
         {
-          m_first_message_stamp = m_lidar1d_up_sh.getMsg()->header.stamp;
+          m_first_message_stamp = rclcpp::Time(m_lidar1d_up_sh.getMsg()->header.stamp);
           m_first_message_received = true;
         }
 
         //}
 
         /* if the realsense timeout has run out, apply fallback values //{ */
-        const ros::Duration cinfo_delay = ros::Time::now() - m_first_message_stamp;
-        if (m_first_message_received && cinfo_delay >= m_fallback_timeout)
+        if (m_first_message_received)
         {
-          ROS_WARN("[%s]: No camera info message received after %.2f seconds, using fallback number of horizontal sectors: %d!", m_node_name.c_str(),
-                   cinfo_delay.toSec(), m_fallback_n_horizontal_sectors);
-          initialize_sectors(m_fallback_n_horizontal_sectors, m_fallback_vertical_fov);
-          m_sectors_initialized = true;
+          const rclcpp::Duration cinfo_delay = clock->now() - m_first_message_stamp;
+          if (cinfo_delay >= m_fallback_timeout)
+          {
+            RCLCPP_WARN(node->get_logger(), "No camera info message received after %.2f seconds, using fallback number of horizontal sectors: %d!",
+                        cinfo_delay.seconds(), m_fallback_n_horizontal_sectors);
+            initialize_sectors(m_fallback_n_horizontal_sectors, m_fallback_vertical_fov);
+            m_sectors_initialized = true;
+          }
         }
         //}
         //}
@@ -448,7 +506,7 @@ namespace mrs_bumper
     int m_median_filter_size;
 
     int m_depthmap_unknown_pixel_value;
-    sensor_msgs::RegionOfInterest m_depthmap_roi;
+    sensor_msgs::msg::RegionOfInterest m_depthmap_roi;
     bool m_depthmap_roi_centering;
     int m_depthmap_hist_n_bins;
     int m_depthmap_hist_quantile_area;
@@ -466,35 +524,36 @@ namespace mrs_bumper
     Eigen::Vector3d m_lidar3d_include_box_offset;
     Eigen::Vector3d m_lidar3d_include_box_size;
 
-    ros::Duration m_fallback_timeout;
+    rclcpp::Duration m_fallback_timeout{0, 0};
     int m_fallback_n_horizontal_sectors;
     double m_fallback_vertical_fov;
     //}
 
     /* ROS related variables (subscribers, timers etc.) //{ */
-    std::unique_ptr<drmgr_t> m_drmgr_ptr;
+    std::shared_ptr<mrs_lib::DynparamMgr> m_drmgr_ptr;
+    std::mutex mutex_drs_params_;
+    DynParams_t drs_params_;
 
-    mrs_lib::SubscribeHandler<sensor_msgs::Image> m_depthmap_sh;
-    mrs_lib::SubscribeHandler<sensor_msgs::CameraInfo> m_depth_cinfo_sh;
-    mrs_lib::SubscribeHandler<pc_t> m_lidar3d_sh;
-    mrs_lib::SubscribeHandler<sensor_msgs::LaserScan> m_lidar2d_sh;
-    mrs_lib::SubscribeHandler<sensor_msgs::Range> m_lidar1d_down_sh;
-    mrs_lib::SubscribeHandler<sensor_msgs::Range> m_lidar1d_up_sh;
-
-    tf2_ros::Buffer m_tf_buffer;
+    mrs_lib::SubscriberHandler<sensor_msgs::msg::Image> m_depthmap_sh;
+    mrs_lib::SubscriberHandler<sensor_msgs::msg::CameraInfo> m_depth_cinfo_sh;
+    mrs_lib::SubscriberHandler<sensor_msgs::msg::PointCloud2> m_lidar3d_sh;
+    mrs_lib::SubscriberHandler<sensor_msgs::msg::LaserScan> m_lidar2d_sh;
+    mrs_lib::SubscriberHandler<sensor_msgs::msg::Range> m_lidar1d_down_sh;
+    mrs_lib::SubscriberHandler<sensor_msgs::msg::Range> m_lidar1d_up_sh;
+    std::unique_ptr<tf2_ros::Buffer> m_tf_buffer;
     std::unique_ptr<tf2_ros::TransformListener> m_tf_listener_ptr;
 
     mrs_lib::PublisherHandler<ObstacleSectors> m_obstacles_pub;
-    mrs_lib::PublisherHandler<sensor_msgs::Image> m_processed_depthmap_pub;
+    mrs_lib::PublisherHandler<sensor_msgs::msg::Image> m_processed_depthmap_pub;
     mrs_lib::PublisherHandler<Histogram> m_depthmap_hist_pub;
-    mrs_lib::PublisherHandler<sensor_msgs::PointCloud2> m_lidar3d_processed;
+    mrs_lib::PublisherHandler<sensor_msgs::msg::PointCloud2> m_lidar3d_processed;
 
-    ros::Timer m_main_loop_timer;
+    rclcpp::TimerBase::SharedPtr m_main_loop_timer;
 
-    std::string m_node_name;
+    rclcpp::Node::SharedPtr node;
+    rclcpp::Clock::SharedPtr clock;
     //}
 
-  private:
     // --------------------------------------------------------------
     // |                   Other member variables                   |
     // --------------------------------------------------------------
@@ -512,7 +571,7 @@ namespace mrs_bumper
 
     cv::Mat m_depthmap_mask_im;
     bool m_depthmap_roi_initialized;
-    ros::Time m_first_message_stamp;
+    rclcpp::Time m_first_message_stamp;
     bool m_first_message_received;
     bool m_sectors_initialized;
 
@@ -522,7 +581,6 @@ namespace mrs_bumper
 
     std::unique_ptr<mrs_lib::Transformer> m_tfm;
 
-  private:
     // --------------------------------------------------------------
     // |                 Obstacle detection methods                 |
     // --------------------------------------------------------------
@@ -549,14 +607,15 @@ namespace mrs_bumper
 
       // dilate and erode the image if requested
       {
-        const int elem_a = m_drmgr_ptr->config.structuring_element_a;
-        const int elem_b = m_drmgr_ptr->config.structuring_element_b;
+        auto drs_params = mrs_lib::get_mutexed(mutex_drs_params_, drs_params_);
+        const int elem_a = drs_params.structuring_element_a;
+        const int elem_b = drs_params.structuring_element_b;
         cv::Mat element = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(elem_a, elem_b), cv::Point(-1, -1));
-        cv::dilate(detect_im, detect_im, element, cv::Point(-1, -1), m_drmgr_ptr->config.dilate_iterations);
-        cv::erode(detect_im, detect_im, element, cv::Point(-1, -1), m_drmgr_ptr->config.erode_iterations);
+        cv::dilate(detect_im, detect_im, element, cv::Point(-1, -1), drs_params.dilate_iterations);
+        cv::erode(detect_im, detect_im, element, cv::Point(-1, -1), drs_params.erode_iterations);
 
         // erode without using zero (unknown) pixels
-        if (m_drmgr_ptr->config.erode_ignore_empty_iterations > 0)
+        if (drs_params.erode_ignore_empty_iterations > 0)
         {
           cv::Mat unknown_as_max = detect_im;
           if (m_depthmap_unknown_pixel_value != std::numeric_limits<uint16_t>::max())
@@ -564,16 +623,17 @@ namespace mrs_bumper
             unknown_as_max = cv::Mat(raw_im.size(), CV_16UC1, std::numeric_limits<uint16_t>::max());
             detect_im.copyTo(unknown_as_max, known_pixels);
           }
-          cv::erode(unknown_as_max, detect_im, element, cv::Point(-1, -1), m_drmgr_ptr->config.erode_ignore_empty_iterations);
+          cv::erode(unknown_as_max, detect_im, element, cv::Point(-1, -1), drs_params.erode_ignore_empty_iterations);
         }
       }
       //}
 
       // TODO: filter out ground?
 
-      m_depthmap_hist_n_bins = m_drmgr_ptr->config.histogram_n_bins;
-      m_depthmap_hist_quantile_area = m_drmgr_ptr->config.histogram_quantile_area;
-      m_depthmap_max_depth = m_drmgr_ptr->config.max_depth;
+      auto drs_params = mrs_lib::get_mutexed(mutex_drs_params_, drs_params_);
+      m_depthmap_hist_n_bins = drs_params.histogram_n_bins;
+      m_depthmap_hist_quantile_area = drs_params.histogram_quantile_area;
+      m_depthmap_max_depth = drs_params.max_depth;
 
       cv::Mat usable_pixels;
       if (m_depthmap_mask_im.empty())
@@ -595,8 +655,8 @@ namespace mrs_bumper
         /* Create and publish the debug image //{ */
         cv_bridge::CvImagePtr processed_depthmap_cvb = source_msg;
         processed_depthmap_cvb->image = detect_im;
-        sensor_msgs::ImageConstPtr out_msg = processed_depthmap_cvb->toImageMsg();
-        m_processed_depthmap_pub.publish(out_msg);
+        sensor_msgs::msg::Image::ConstSharedPtr out_msg = processed_depthmap_cvb->toImageMsg();
+        m_processed_depthmap_pub.publish(*out_msg);
         //}
       }
 
@@ -620,7 +680,7 @@ namespace mrs_bumper
     //}
 
     /* find_obstacles_lidar1d() method //{ */
-    std::vector<double> find_obstacles_lidar1d(const sensor_msgs::Range::ConstPtr& msg, const int sector)
+    std::vector<double> find_obstacles_lidar1d(const sensor_msgs::msg::Range::ConstSharedPtr& msg, const int sector)
     {
       std::vector<double> ret(m_n_total_sectors, ObstacleSectors::OBSTACLE_NO_DATA);
 
@@ -645,7 +705,7 @@ namespace mrs_bumper
     /*   return max; */
     /* } */
 
-    std::vector<double> find_obstacles_lidar2d(const sensor_msgs::LaserScan::ConstPtr& scan_msg)
+    std::vector<double> find_obstacles_lidar2d(const sensor_msgs::msg::LaserScan::ConstSharedPtr& scan_msg)
     {
       std::vector<double> ret(m_n_total_sectors, ObstacleSectors::OBSTACLE_NO_DATA);
       const auto buffer_length = m_lidar2d_filter_size;
@@ -683,17 +743,25 @@ namespace mrs_bumper
     //}
 
     /* find_obstacles_pointcloud() method //{ */
-    std::vector<double> find_obstacles_pointcloud(const pc_t::ConstPtr& cloud_orig)
+    std::vector<double> find_obstacles_pointcloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& cloud_msg_in)
     {
       std::vector<double> ret(m_n_total_sectors, ObstacleSectors::OBSTACLE_NO_DATA);
 
-      auto cloud = boost::make_shared<pc_t>();
+      // Transform the incoming PointCloud2 to the desired frame first ??
+      auto cloud_tfd_opt = m_tfm->transformSingle(cloud_msg_in, m_frame_id);
+      if (cloud_tfd_opt == std::nullopt)
+        return ret;
+      auto cloud_msg = cloud_tfd_opt.value();
+
+      // Convert to PCL point cloud
+      auto cloud = std::make_shared<pc_t>();
+      pcl::fromROSMsg(*cloud_msg, *cloud);
 
       /* reduce the number of points using VoxelGrid (output to cloud) //{ */
 
       {
         pcl::VoxelGrid<pt_t> vg;
-        vg.setInputCloud(cloud_orig);
+        vg.setInputCloud(cloud);
         vg.setMinimumPointsNumberPerVoxel(m_lidar3d_voxel_minpoints);
         vg.setLeafSize(m_lidar3d_voxel_size, m_lidar3d_voxel_size, m_lidar3d_voxel_size);
         vg.filter(*cloud);
@@ -735,17 +803,9 @@ namespace mrs_bumper
 
       //}
 
-      sensor_msgs::PointCloud2 cloud_msg;
-
-      pcl::toROSMsg(*cloud, cloud_msg);
-
-      m_lidar3d_processed.publish(cloud_msg);
-
-      // transform the pointcloud to the untilted frame
-      auto cloud_tfd_opt = m_tfm->transformSingle(cloud, m_frame_id);
-      if (cloud_tfd_opt == std::nullopt)
-        return ret;
-      cloud = cloud_tfd_opt.value();
+      sensor_msgs::msg::PointCloud2 processed_msg;
+      pcl::toROSMsg(*cloud, processed_msg);
+      m_lidar3d_processed.publish(processed_msg);
 
       for (const auto& el : *cloud)
       {
@@ -764,7 +824,6 @@ namespace mrs_bumper
     }
     //}
 
-  private:
     // --------------------------------------------------------------
     // |                       Helper methods                       |
     // --------------------------------------------------------------
@@ -842,7 +901,7 @@ namespace mrs_bumper
           m_depthmap_roi.height = img_height;
         if (m_depthmap_roi.height > img_height)
         {
-          ROS_ERROR("[%s]: Desired ROI height (%d) is larger than image height (%d) - clamping!", m_node_name.c_str(), m_depthmap_roi.height, img_height);
+          RCLCPP_ERROR(node->get_logger(), "Desired ROI height (%d) is larger than image height (%d) - clamping!", m_depthmap_roi.height, img_height);
           m_depthmap_roi.height = img_height;
         }
 
@@ -850,7 +909,7 @@ namespace mrs_bumper
           m_depthmap_roi.width = img_width;
         if (m_depthmap_roi.width > img_width)
         {
-          ROS_ERROR("[%s]: Desired ROI width (%d) is larger than image width (%d) - clamping!", m_node_name.c_str(), m_depthmap_roi.width, img_width);
+          RCLCPP_ERROR(node->get_logger(), "Desired ROI width (%d) is larger than image width (%d) - clamping!", m_depthmap_roi.width, img_width);
           m_depthmap_roi.width = img_width;
         }
 
@@ -897,13 +956,13 @@ namespace mrs_bumper
     // | ----- helper methods for 2D lidar obstacle detection ----- |
     /* initialize_lidar2d_offset() method //{ */
     // initializes an angle offset of a 2D LiDAR using transforms
-    void initialize_lidar2d_offset(sensor_msgs::LaserScan::ConstPtr lidar2d_msg)
+    void initialize_lidar2d_offset(const sensor_msgs::msg::LaserScan::ConstSharedPtr& lidar2d_msg)
     {
-      geometry_msgs::Vector3Stamped x_lidar;
+      geometry_msgs::msg::Vector3Stamped x_lidar;
       x_lidar.header = lidar2d_msg->header;
       x_lidar.vector.x = 1.0;
       x_lidar.vector.y = x_lidar.vector.z = 0.0;
-      geometry_msgs::Vector3 x_fcu;
+      geometry_msgs::msg::Vector3 x_fcu;
       const auto tfd_opt = m_tfm->transformSingle(x_lidar, m_frame_id);
       if (!tfd_opt.has_value())
         return;
@@ -955,7 +1014,7 @@ namespace mrs_bumper
       // get the nth element (that's the median)
       const T median = *(std::begin(data) + data.size() / 2);
       if (std::isinf(median))
-        ROS_WARN("[Bumper]: median is inf...");
+        RCLCPP_WARN(rclcpp::get_logger("Bumper"), "median is inf...");
       return median;
     }
     //}
@@ -997,9 +1056,8 @@ namespace mrs_bumper
     }
     //}
 
-  };  // class Bumper
-};    // namespace mrs_bumper
+  }; // class Bumper
+}; // namespace mrs_bumper
 
-#include <pluginlib/class_list_macros.h>
-PLUGINLIB_EXPORT_CLASS(mrs_bumper::Bumper, nodelet::Nodelet)
-
+#include <rclcpp_components/register_node_macro.hpp>
+RCLCPP_COMPONENTS_REGISTER_NODE(mrs_bumper::Bumper)
