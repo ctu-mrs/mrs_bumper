@@ -194,7 +194,7 @@ def generate_launch_description():
             # Other input topics
             ("~/depthmap_in", "front_rgbd/aligned_depth_to_color/image_raw"),
             ("~/depth_cinfo_in", "front_rgbd/aligned_depth_to_color/camera_info"),
-            ("~/lidar3d_in", "os_cloud_nodelet/points"),
+            ("~/lidar3d_in", "ouster/points"), # os_cloud_nodelet/points
             ("~/lidar2d_in", "rplidar/scan"),
             # Output topics
             ("~/obstacle_sectors_out", "~/obstacle_sectors"),

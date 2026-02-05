@@ -20,6 +20,7 @@ set(DEPENDENCIES
   sensor_msgs
   tf2_geometry_msgs
   tf2_ros
+  tf2_sensor_msgs
 )
 
 foreach(DEP IN LISTS DEPENDENCIES)

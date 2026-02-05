@@ -10,6 +10,7 @@
 #include <sensor_msgs/msg/range.hpp>
 #include <tf2_ros/transform_listener.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <tf2_sensor_msgs/tf2_sensor_msgs.hpp>
 
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -163,21 +164,21 @@ namespace mrs_bumper
       mrs_lib::SubscriberHandlerOptions shopts;
       shopts.node = node;
 
-      mrs_lib::construct_object(m_depthmap_sh, shopts, "depthmap_in");
-      mrs_lib::construct_object(m_depth_cinfo_sh, shopts, "depth_cinfo_in");
-      mrs_lib::construct_object(m_lidar3d_sh, shopts, "lidar3d_in");
-      mrs_lib::construct_object(m_lidar2d_sh, shopts, "lidar2d_in");
-      mrs_lib::construct_object(m_lidar1d_down_sh, shopts, "lidar1d_down_in");
-      mrs_lib::construct_object(m_lidar1d_up_sh, shopts, "lidar1d_up_in");
+      mrs_lib::construct_object(m_depthmap_sh, shopts, "~/depthmap_in");
+      mrs_lib::construct_object(m_depth_cinfo_sh, shopts, "~/depth_cinfo_in");
+      mrs_lib::construct_object(m_lidar3d_sh, shopts, "~/lidar3d_in");
+      mrs_lib::construct_object(m_lidar2d_sh, shopts, "~/lidar2d_in");
+      mrs_lib::construct_object(m_lidar1d_down_sh, shopts, "~/lidar1d_down_in");
+      mrs_lib::construct_object(m_lidar1d_up_sh, shopts, "~/lidar1d_up_in");
 
       mrs_lib::PublisherHandlerOptions phopts;
       phopts.node = node;
 
       // Initialize publishers
-      m_obstacles_pub = mrs_lib::PublisherHandler<ObstacleSectors>(phopts, "obstacle_sectors");
-      m_processed_depthmap_pub = mrs_lib::PublisherHandler<sensor_msgs::msg::Image>(phopts, "processed_depthmap");
-      m_depthmap_hist_pub = mrs_lib::PublisherHandler<Histogram>(phopts, "depthmap_histogram");
-      m_lidar3d_processed = mrs_lib::PublisherHandler<sensor_msgs::msg::PointCloud2>(phopts, "lidar3d_processed");
+      m_obstacles_pub = mrs_lib::PublisherHandler<ObstacleSectors>(phopts, "~/obstacle_sectors");
+      m_processed_depthmap_pub = mrs_lib::PublisherHandler<sensor_msgs::msg::Image>(phopts, "~/processed_depthmap");
+      m_depthmap_hist_pub = mrs_lib::PublisherHandler<Histogram>(phopts, "~/depthmap_histogram");
+      m_lidar3d_processed = mrs_lib::PublisherHandler<sensor_msgs::msg::PointCloud2>(phopts, "~/lidar3d_processed");
 
       // initialize tf buffer with node clock and start transform listener
       m_tf_buffer = std::make_unique<tf2_ros::Buffer>(node->get_clock());
