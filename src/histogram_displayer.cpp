@@ -24,7 +24,7 @@ namespace mrs_bumper
       cv::setMouseCallback(winname_, mouse_callback, NULL);
 
       mrs_lib::SubscriberHandlerOptions shopts(this_node_ptr());
-      sh_hist = mrs_lib::SubscriberHandler<mrs_msgs::msg::Histogram>(shopts, "histogram", rclcpp::Duration::from_seconds(5.0));
+      sh_hist = mrs_lib::SubscriberHandler<mrs_msgs::msg::Histogram>(shopts, "~/histogram", rclcpp::Duration::from_seconds(5.0));
 
       timer_ = this_node_ptr()->create_wall_timer(std::chrono::milliseconds(33), [this]() {
         if (sh_hist.newMsg())
