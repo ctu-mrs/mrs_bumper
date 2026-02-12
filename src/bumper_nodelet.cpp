@@ -181,7 +181,7 @@ namespace mrs_bumper
       m_lidar3d_processed = mrs_lib::PublisherHandler<sensor_msgs::msg::PointCloud2>(phopts, "~/lidar3d_processed");
 
       // initialize tf buffer with node clock and start transform listener
-      m_tf_buffer = std::make_unique<tf2_ros::Buffer>(node->get_clock());
+      m_tf_buffer = std::make_unique<tf2_ros::Buffer>(clock);
       m_tf_listener_ptr = std::make_unique<tf2_ros::TransformListener>(*m_tf_buffer);
       //}
 
