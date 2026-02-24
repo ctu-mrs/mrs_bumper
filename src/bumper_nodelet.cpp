@@ -72,13 +72,8 @@ namespace mrs_bumper
   class Bumper : public mrs_lib::Node
   {
   public:
+    /* Bumper() constructor //{ */
     Bumper(const rclcpp::NodeOptions& options) : mrs_lib::Node("Bumper", options)
-    {
-      onInit();
-    }
-
-    /* onInit() method //{ */
-    void onInit()
     {
       node = this->this_node_ptr();
       clock = node->get_clock();
